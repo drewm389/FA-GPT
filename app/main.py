@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.config import settings
 from app.simple_ingestion import process_and_ingest_document
 from app.rag_core import get_rag_response
+from system_status import check_database, check_ollama_models
 
 # Page config
 st.set_page_config(
@@ -63,6 +64,20 @@ st.caption("Powered by IBM Docling & Local VLM")
 # Sidebar
 with st.sidebar:
     st.header("📚 Document Management")
+
+    # System Status
+    with st.expander("🩺 System Status", expanded=True):
+        db_ok, db_msg = check_database()
+        ollama_ok, ollama_models = check_ollama_models()
+        if db_ok:
+            st.success("PostgreSQL: Connected")
+        else:
+            st.error(f"PostgreSQL: {db_msg}")
+        if ollama_ok:
+            st.success(f"Ollama: Connected ({len(ollama_models)} models)")
+        else:
+            st.error("Ollama: Not responding")
+
     
     # Model status
     with st.expander("🤖 Model Status", expanded=False):

@@ -15,9 +15,11 @@ import uuid
 import json
 import time
 import argparse
+import logging
 from pathlib import Path
 from typing import List, Tuple, Dict
 import base64
+import shutil
 
 from .config import settings
 from .connectors import get_ollama_client, get_db_connection
@@ -30,6 +32,16 @@ from .enhanced_granite_docling import enhanced_granite_multimodal_parsing
 
 logger = get_logger("simple-ingestion")
 logger.info("🔒 Ingestion pipeline is locked to: Enhanced Granite Docling Parser")
+
+def quarantine_document(pdf_path: str, reason: str):
+    """Moves a failed document to the quarantine directory."""
+    try:
+        quarantine_dir = settings.data_dir / "quarantine"
+        quarantine_dir.mkdir(exist_ok=True)
+        shutil.move(pdf_path, quarantine_dir / Path(pdf_path).name)
+        logger.warning(f"Moved document {pdf_path} to quarantine. Reason: {reason}")
+    except Exception as e:
+        logger.error(f"Failed to move {pdf_path} to quarantine: {e}")
 
 def process_and_ingest_document(pdf_path: str):
     """
@@ -75,6 +87,7 @@ def process_and_ingest_document(pdf_path: str):
     except Exception as e:
         duration = time.time() - start_time
         logger.log_exception(e, f"Ingestion failed for {pdf_path} after {duration:.2f}s")
+        quarantine_document(pdf_path, str(e))
         raise
 
 
@@ -170,24 +183,37 @@ def extract_and_store_kg_qwen(doc_elements: List[Dict], doc_source: str):
     client = get_ollama_client()
     conn = None
     
-    kg_prompt = """You are analyzing military field artillery documentation. Extract key entities and their relationships.
+    # Unified Knowledge Graph Prompt for Tactical and Operational Domains
+    kg_prompt = """You are an expert military analyst creating a unified knowledge graph from U.S. Army doctrine, including Field Manuals (FM), Army Techniques Publications (ATP), and Tabular Firing Tables (TFTs). Your task is to extract and structure information related to both tactical gunnery and the operational planning process.
 
 Focus on these entity types:
-- WeaponSystem
-- Ammunition
-- Component
-- Procedure
-- Specification
-- SafetyWarning
+- MDMP_Step: A step in the Military Decision Making Process (e.g., 'Mission Analysis,' 'COA Development').
+- Planning_Product: An artifact of the planning process (e.g., 'Course of Action,' 'Commander Critical Information Requirements,' 'Decision Support Matrix').
+- Staff_Section: A staff element within a headquarters (e.g., 'S3,' 'G2,' 'Fire Support Cell').
+- Command_Post_Function: A key activity or cell within a command post (e.g., 'Current Operations,' 'Plans Cell,' 'Battle Rhythm').
+- GunneryTask: A specific action or step in a gunnery procedure (e.g., 'Lay for Direction,' 'Apply Deflection').
+- SafetyProcedure: A critical safety check or warning (e.g., 'Verify Boresight,' 'Check for Misfire').
+- BallisticData: A complete row from a firing table, representing a firing solution.
+- BallisticVariable: A factor that affects the projectile trajectory (e.g., 'Muzzle Velocity,' 'Air Density,' 'Projectile Weight').
+- WeaponSystem: A cannon or howitzer (e.g., 'M777A1,' 'M109A6').
+- Ammunition: A type of projectile or charge (e.g., 'M795 HE,' 'MACS Charge 3').
+- Publication: A referenced manual or document (e.g., 'TC 3-09.81,' 'FM 5-0').
 
 Relationship types:
-- USES, REQUIRES, PART_OF, PRECEDED_BY, HAS_SPECIFICATION, HAS_WARNING, COMPATIBLE_WITH
+- PRECEDES, PART_OF: To show procedural and hierarchical flow in MDMP and Gunnery.
+- PRODUCES: Linking an MDMP_Step to a Planning_Product.
+- RESPONSIBLE_FOR: Linking a Staff_Section to a Planning_Product or Command_Post_Function.
+- INFORMS: Linking a Planning_Product to an MDMP_Step or a decision.
+- REQUIRES_SAFETY_CHECK: Linking a GunneryTask to a mandatory SafetyProcedure.
+- HAS_BALLISTIC_DATA: Linking a WeaponSystem/Ammunition combination to its BallisticData.
+- AFFECTS_TRAJECTORY: Linking a BallisticVariable to BallisticData.
+- REFERENCES_PUBLICATION: Linking a procedure or concept to another manual.
 
 Content to analyze: {content}
 
-Return valid JSON only:
-{{"entities": [{{"id": "M777_Howitzer", "type": "WeaponSystem", "properties": {{"caliber": "155mm", "range": "30km"}}}}], 
-"relationships": [{{"source": "M777_Howitzer", "target": "M982_Excalibur", "type": "USES"}}]}}
+Return valid JSON only. For TFT data, create one BallisticData entity per row with all columns as properties. For MDMP steps, detail their inputs and outputs.
+{{"entities": [{{"id": "Mission_Analysis", "type": "MDMP_Step", "properties": {{"description": "An iterative planning methodology to understand the situation and mission."}}}}, {{"id": "COA_Sketch", "type": "Planning_Product", "properties": {{"purpose": "A visual representation of a potential solution."}}}}, {{"id": "Determine_Firing_Data", "type": "GunneryTask", "properties": {{"description": "The process of calculating all data required to fire the weapon."}}}}, {{"id": "Misfire_Procedures", "type": "SafetyProcedure", "properties": {{"priority": "High"}}}}],
+"relationships": [{{"source": "Mission_Analysis", "target": "COA_Sketch", "type": "PRODUCES"}}, {{"source": "Determine_Firing_Data", "target": "Misfire_Procedures", "type": "REQUIRES_SAFETY_CHECK"}}]}}
 """
     
     try:
@@ -250,11 +276,11 @@ Return valid JSON only:
                     
                     conn.commit()
                 except Exception as e:
-                    logging.error(f"KG element extraction failed: {str(e)}")
+                    logger.error(f"KG element extraction failed: {str(e)}")
                     conn.rollback()
                     continue
     except Exception as e:
-        logging.error(f"Database connection for KG failed: {e}")
+        logger.error(f"Database connection for KG failed: {e}")
     finally:
         if conn:
             conn.close()
@@ -348,9 +374,9 @@ Examples:
             print(f"❌ PDF not found: {pdf_path}")
             sys.exit(1)
 
-        logging.info(f"Running ingestion for single document: {pdf_path}")
+        logger.info(f"Running ingestion for single document: {pdf_path}")
         process_and_ingest_document(pdf_path)
-        logging.info("Single document ingestion completed successfully")
+        logger.info("Single document ingestion completed successfully")
     except Exception as e:
-        logging.exception(f"Single document ingestion failed: {e}")
+        logger.exception(f"Single document ingestion failed: {e}")
         sys.exit(2)

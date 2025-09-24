@@ -22,7 +22,7 @@ All settings can be overridden via environment variables or a .env file.
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from logging_config import get_logger
+from .logging_config import get_logger
 
 # Initialize structured logger for configuration
 logger = get_logger("config")

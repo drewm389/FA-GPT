@@ -47,3 +47,41 @@ jobs:
       - name: Run tests
         run: |
           pytest -q
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and run Docker containers
+        run: docker-compose up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for PostgreSQL..."
+          until docker-compose exec -T postgres pg_isready -U postgres; do
+            sleep 5
+          done
+          echo "PostgreSQL is ready."
+
+          echo "Waiting for Ollama..."
+          until docker-compose exec -T ollama ollama list; do
+            sleep 5
+          done
+          echo "Ollama is ready."
+
+      - name: Create test document
+        run: |
+          mkdir -p data/documents
+          echo "This is a test PDF." > data/documents/test.pdf
+
+      - name: Run integration test
+        run: |
+          docker-compose exec -T streamlit python -m pytest tests/test_integration.py
+
+      - name: Shutdown Docker containers
+        if: always()
+        run: docker-compose down
