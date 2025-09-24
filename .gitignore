@@ -1,0 +1,333 @@
+# FA-GPT .gitignore - Comprehensive exclusions for production-ready repository
+
+# ============================
+# SENSITIVE DATA & CREDENTIALS
+# ============================
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+*.key
+*.pem
+*.crt
+config/secrets.yaml
+config/credentials.json
+
+# ============================
+# DATA DIRECTORIES  
+# ============================
+# Source documents (potentially sensitive)
+data/documents/
+data/documents/*
+!data/documents/.gitkeep
+
+# Processed content and extractions
+data/extracted/
+data/extracted/*
+!data/extracted/.gitkeep
+
+# User-uploaded images
+images/
+images/*
+!images/.gitkeep
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================
+# LOGS AND RUNTIME FILES
+# ============================
+logs/
+logs/*
+!logs/.gitkeep
+*.log
+*.log.*
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Process IDs
+*.pid
+
+# ============================
+# PYTHON ENVIRONMENT
+# ============================
+# Virtual environments
+fagpt_env/
+venv/
+env/
+.venv/
+.conda/
+conda-meta/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ============================
+# AI/ML MODEL CACHE
+# ============================
+# Docling cache (large model files)
+.cache/
+.cache/docling/
+*/.cache/
+
+# Ollama model cache
+.ollama/
+ollama/
+
+# PyTorch cache
+.torch/
+torch_cache/
+
+# HuggingFace cache
+.huggingface/
+transformers_cache/
+
+# MIOpen cache (GPU)
+miopen_cache/
+/tmp/miopen_cache*
+
+# ============================
+# DOCKER & CONTAINERS
+# ============================
+# Docker build context excludes
+Dockerfile.dev
+docker-compose.override.yml
+docker-compose.dev.yml
+.dockerignore
+
+# Container volumes
+volumes/
+docker_volumes/
+
+# ============================
+# IDE AND EDITOR FILES
+# ============================
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# PyCharm
+.idea/
+*.swp
+*.swo
+
+# Vim
+*~
+.*.sw[a-p]
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ============================
+# OPERATING SYSTEM
+# ============================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================
+# BACKUP FILES
+# ============================
+# Keep structure but exclude large backups
+backups/pdf_backup_*/
+backups/pdfs_*/
+backups/ingestion_manifest_*/
+# Keep audit snapshots as they're important for project understanding
+# backups/audit_snapshot_*/
+
+# Exclude large old backup directories
+backup/
+
+# Legacy backups
+*.backup
+*.bak
+*.orig
+
+# ============================
+# DEVELOPMENT AND TESTING
+# ============================
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# ============================
+# PERFORMANCE PROFILING
+# ============================
+# Profiling output
+*.prof
+*.pstats
+*.profile
+
+# Memory profiling
+*.mprof
+
+# ============================
+# MULTIMEDIA PROCESSING
+# ============================
+# Large processed images (keep structure)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.webp
+# Exception: keep small example/demo images
+!examples/*.png
+!docs/images/*.png
+!screenshots/*.png
+
+# ============================
+# PACKAGE MANAGERS
+# ============================
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Poetry
+poetry.lock
+
+# Pipenv
+Pipfile.lock
+
+# PDM
+__pypackages__/
+
+# ============================
+# DOCUMENTATION BUILD
+# ============================
+# Sphinx documentation
+docs/_build/
+docs/build/
+docs/source/_build/
+
+# MkDocs
+site/
+
+# ============================
+# KEEP IMPORTANT STRUCTURE
+# ============================
+# Ensure important empty directories are preserved
+!.gitkeep
+
+# ============================
+# PROJECT SPECIFIC EXCLUSIONS
+# ============================
+# FA-GPT specific excludes
+system_test_output.txt
+performance_benchmark.json
+gpu_diagnostics.log
+
+# Large document collections for testing
+test_documents/large/
+sample_data/bulk/
+
+# User configuration overrides
+config/user_overrides.yaml
+app/user_config.py
