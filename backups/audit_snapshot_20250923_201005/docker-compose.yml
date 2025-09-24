@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:rocm
+    container_name: fa-gpt-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - 44   # video group
+      - 992  # render group
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      - HIP_VISIBLE_DEVICES=0
+      - ROCM_PATH=/opt/rocm
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  postgres:
+    # Use official Apache AGE Docker image which includes PostgreSQL + AGE + pgvector
+    image: apache/age:latest
+    container_name: fa-gpt-postgres
+    environment:
+      POSTGRES_DB: vectordb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  streamlit:
+    build: 
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: fa-gpt-streamlit
+    depends_on:
+      - ollama
+      - postgres
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: vectordb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      OLLAMA_HOST: ollama
+      OLLAMA_PORT: 11434
+    volumes:
+      - ./data:/app/data
+      - ./images:/app/images
+    ports:
+      - "8501:8501"
+    command: streamlit run app/main.py --server.address=0.0.0.0 --server.port=8501
+
+volumes:
+  ollama_data:
+  postgres_data:

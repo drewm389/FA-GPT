@@ -24,10 +24,11 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: |
+            ~/.cache/pip
+            ~/.cache/pypoetry
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          restore-keys: ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
@@ -40,9 +41,9 @@ jobs:
 
       - name: Run linters
         run: |
-          black --check . || true
-          flake8 || true
+          black --check .
+          flake8
 
       - name: Run tests
         run: |
-          pytest -q || true
+          pytest -q

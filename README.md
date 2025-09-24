@@ -1,4 +1,8 @@
-# FA-GPT: Field Artillery GPT# FA-GPT: Field Artillery GPT System 🚀
+[![CI](https://github.com/drewm389/FA-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/drewm389/FA-GPT/actions/workflows/ci.yml)
+# FA-GPT: Field Artillery GPT
+# FA-GPT: Field Artillery GPT System 🚀
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) A state-of-the-art local Retrieval-Augmented Generation (RAG) system specifically designed for Field Artillery technical documents. FA-GPT uses IBM's cutting-edge Granite-Docling-258M vision-language model and advanced multimodal processing to provide intelligent question-answering capabilities over military technical manuals.
 
 
 

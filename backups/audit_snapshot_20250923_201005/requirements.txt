@@ -1,0 +1,45 @@
+# Core Framework
+streamlit==1.29.0
+
+# Ollama for local LLM/VLM
+ollama==0.3.0
+
+# Database Connectors - PostgreSQL with pgvector + Apache AGE
+psycopg2-binary==2.9.7
+
+# Document Processing (Granite Docling)
+docling>=2.54.0
+docling-core>=2.48.2
+mlx-vlm>=0.3.3
+pdf2image>=1.17.0
+PyMuPDF==1.24.5
+Pillow>=10.3.0
+
+# Multimodal Embeddings and Advanced AI
+sentence-transformers==2.2.2
+open-clip-torch>=2.20.0
+transformers>=4.53.0
+torch>=2.2.2
+torchvision>=0.17.0
+
+# Image Captioning and Model Quantization
+accelerate>=0.26.0
+bitsandbytes>=0.42.0
+
+# Cross-Encoder Reranking
+datasets>=2.16.0
+
+# Configuration
+pydantic>=2.6.0
+pydantic-settings>=2.3.0
+
+# Utilities
+python-multipart==0.0.6
+numpy==1.24.3
+pandas>=2.1.4
+requests>=2.32.2
+rich==13.6.0
+
+# Interactive Visualizations
+plotly>=6.1.1
+kaleido>=0.2.1
