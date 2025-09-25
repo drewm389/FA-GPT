@@ -4,6 +4,9 @@ streamlit==1.29.0
 # Ollama for local LLM/VLM
 ollama==0.3.0
 
+# Token-aware text processing
+tiktoken>=0.7.0
+
 # Database Connectors - PostgreSQL with pgvector + Apache AGE
 psycopg2-binary==2.9.7
 
