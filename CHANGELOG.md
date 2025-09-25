@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Comprehensive documentation updates including README and technical docs
 - Automated changelog maintenance workflow
+- Major architecture refactoring for better maintainability and clean separation of concerns
+
+## [2.3.0] - 2025-01-XX - Architecture Refactoring & Script Consolidation
+
+### 🏗️ Architecture Improvements
+- **Application Structure Refactoring**
+  - `app/state.py`: New centralized state management with `AppState` dataclass
+  - `app/military_ui.py`: Complete UI rendering separation into `MilitaryUI` class
+  - `app/main.py`: Simplified controller pattern for clean coordination
+  - Eliminated scattered `st.session_state` variables for better maintainability
+
+### 🔧 Script Consolidation
+- **Unified Processing Script**
+  - `process.py`: Single consolidated script replacing multiple utilities
+  - Replaced: `process_documents.py`, `enhanced_reprocessing.py`, `retry_failed_ingestion.py`
+  - Enhanced command-line interface with comprehensive options
+  - Support for batch processing, failed document retry, database operations
+  - Improved error handling and quarantine management
+
+### 📚 Documentation Updates
+- Updated README.md to reflect new architecture and consolidated scripts
+- Enhanced code documentation with comprehensive docstrings
+- Added usage examples for new unified processing script
+- Improved project structure documentation
+
+### 🧹 Code Quality
+- Clean separation of concerns between UI, state, and business logic
+- Modular components enabling better unit testing
+- Reduced code duplication through consolidation
+- Improved error handling and logging consistency
 
 ## [2.2.0] - 2025-01-XX - GPU Acceleration & System Optimization
 

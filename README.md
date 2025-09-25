@@ -18,6 +18,27 @@ FA-GPT combines multiple advanced technologies to create a comprehensive multimo
 
 > **Production-ready Retrieval-Augmented Generation (RAG) system for U.S. Army Field Artillery documents with GPU acceleration, professional logging, and enterprise-grade operational capabilities.**
 
+## 🔄 Recent Architecture Improvements
+
+FA-GPT has been refactored for better maintainability and cleaner separation of concerns:
+
+### **New Application Architecture**
+- **`app/state.py`**: Centralized state management with `AppState` dataclass replacing scattered session variables
+- **`app/military_ui.py`**: Clean UI rendering class (`MilitaryUI`) separating interface logic from business logic
+- **`app/main.py`**: Simplified controller coordinating state and UI components
+
+### **Unified Processing Scripts**
+- **`process.py`**: Single consolidated script replacing multiple processing utilities
+  - Replaces: `process_documents.py`, `enhanced_reprocessing.py`, `retry_failed_ingestion.py`
+  - Supports: batch processing, failed document retry, database clearing, custom limits
+  - Command-line interface: `python process.py --help` for all options
+
+### **Benefits of Refactoring**
+- **Cleaner Architecture**: Separation of concerns with state, UI, and business logic
+- **Easier Maintenance**: Single processing script instead of multiple redundant tools
+- **Better Testing**: Modular components allow for targeted unit testing
+- **Improved Documentation**: Centralized logic makes codebase easier to understand
+
 ## ⚡ GPU Acceleration 
 
 ## 🎯 Overview
@@ -162,7 +183,7 @@ cp your_pdfs/*.pdf data/documents/## 🏗️ Architecture
 
 # Process documents with verbose output```
 
-python process_documents.py --input-dir data/documents --limit 5 --verbose┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
+python process.py --input-dir data/documents --limit 5┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
 
 │   PDF Documents │ -> │ Granite-Docling-258M │ -> │ Organized Files │
 
@@ -200,7 +221,10 @@ streamlit run app/main.py│   Regulations)  │    │                      │
 
 ```bash                    │  Docker Deploy   │
 
-python -m app.simple_ingestion --file /path/to/document.pdf --verbose                    └──────────────────┘
+python -m app.simple_ingestion --file /path/to/document.pdf --verbose
+
+# Or use the unified processing script for single files
+python process.py --input-dir /path/containing/single/file --limit 1                    └──────────────────┘
 
 ``````
 
@@ -210,7 +234,7 @@ python -m app.simple_ingestion --file /path/to/document.pdf --verbose           
 
 ```bash
 
-python process_documents.py --input-dir data/documents --limit 10 --verbose```
+python process.py --input-dir data/documents --limit 10```
 
 ```FA-GPT/
 
@@ -258,9 +282,9 @@ Features:│   │   └── Field Manuals/                 # Army Field Manua
 
 ### API Integration├── images/                                # Document image cache
 
-├── process_documents.py                   # Batch processing script
+├── process.py                             # Unified document processing script
 
-```python├── enhanced_reprocessing.py               # Granite-enhanced reprocessing
+```python
 
 from app.simple_ingestion import process_and_ingest_document├── docker-compose.yml                     # Docker services configuration
 
