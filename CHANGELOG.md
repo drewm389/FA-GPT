@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Major architecture refactoring for better maintainability and clean separation of concerns
 - Enhanced user interface with streamlit-antd-components for improved navigation
 
+### Changed
+- Replaced the corrupted `app/military_ui.py` with a minimal placeholder implementation while the rebuilt UI is in progress.
+- Updated `app/main.py` navigation call to align with the latest `streamlit-antd-components` API.
+- Refreshed README guidance to describe the temporary UI shell and the required `PYTHONPATH=$(pwd)` when launching Streamlit manually.
+
 ## [3.0.0] - 2025-01-XX - GUI Refactoring & Enhanced User Experience
 
 ### 🎨 User Interface Improvements

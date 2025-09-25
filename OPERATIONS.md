@@ -17,10 +17,19 @@ python system_status.py --detailed
 python -m app.simple_ingestion --file /path/to/document.pdf --verbose
 
 # Process batch of documents
-python process_documents.py --input-dir data/documents --limit 5 --verbose
+python process.py --input-dir data/documents --limit 5
+
+# Retry failed documents from quarantine
+python process.py --retry-failed
 
 # Clear database and reprocess
-python process_documents.py --clear-db --input-dir data/documents --verbose
+python process.py --clear-db --input-dir data/documents --limit 5
+```
+
+### Web Interface
+```bash
+# Launch the Streamlit shell from project root
+PYTHONPATH=$(pwd) streamlit run app/main.py
 ```
 
 ### System Monitoring
@@ -62,33 +71,43 @@ python -m app.simple_ingestion --input-dir data/documents --clear-db --verbose
 - `--clear-db`: Clear existing database entries before processing
 - `--verbose`: Enable verbose logging (DEBUG level)
 
-### process_documents.py
-Batch document processing with progress tracking.
+### process.py
+Unified document processing CLI that replaces the former helper scripts.
 
 ```bash
-# Process all documents
-python process_documents.py --input-dir data/documents
+# Process all new documents under data/documents
+python process.py
 
-# Process with limit and verbose output
-python process_documents.py --input-dir data/documents --limit 5 --verbose
+# Process only a handful of documents
+python process.py --limit 5
 
-# Clear database and batch process
-python process_documents.py --clear-db --limit 10
+# Use a custom directory
+python process.py --input-dir /path/to/pdfs
 
-# Custom input directory
-python process_documents.py --input-dir /path/to/pdfs --verbose
+# Force reprocessing of every document (ignores previous runs)
+python process.py --reprocess-all
+
+# Retry items moved to the quarantine folder
+python process.py --retry-failed
+
+# Drop ingestion tables before running (DESTRUCTIVE)
+python process.py --clear-db
+
+# Add a delay between documents (seconds)
+python process.py --delay 2
+
+# Stop immediately on the first failure
+python process.py --stop-on-error
 ```
 
 **Options**:
-- `--input-dir PATH`: Root directory containing documents (default: data/documents)
-- `--limit N`: Limit the number of documents to process
-- `--clear-db`: Clear existing database entries before processing  
-- `--verbose`: Enable verbose logging (DEBUG level)
-
-**Legacy Support**: Positional arguments still supported:
-```bash
-python process_documents.py 5  # Process 5 documents (legacy)
-```
+- `--input-dir PATH`: Directory that will be scanned recursively for PDFs (default: data/documents)
+- `--limit N`: Limit the number of documents processed in the run
+- `--retry-failed`: Process only items in `data/quarantine`
+- `--reprocess-all`: Ignore previous runs and reprocess everything in the input directory
+- `--clear-db`: Drop ingestion tables before processing (requires confirmation)
+- `--delay SECONDS`: Pause between document runs (floating point allowed)
+- `--stop-on-error`: Abort the run after the first failure
 
 ### system_status.py
 System health monitoring and diagnostics.

@@ -39,11 +39,11 @@ FA-GPT has been refactored for better maintainability and cleaner separation of 
 - **Better Testing**: Modular components allow for targeted unit testing
 - **Improved Documentation**: Centralized logic makes codebase easier to understand
 
-### **Enhanced User Interface (v3.0)**
-- **Modern Navigation**: Replaced tabs with `streamlit-antd-components` menu system for cleaner UX
-- **Improved Layout**: Container-based organization for better visual grouping
-- **Enhanced Responsiveness**: Better mobile and desktop experience
-- **Professional Styling**: Military-themed design with improved visual hierarchy
+### **Current Web Interface Status (v3.1-dev)**
+- **Minimal Shell Active**: The Streamlit UI currently ships as a lightweight placeholder while the full-featured Military UI is being rebuilt.
+- **Menu Navigation**: Uses `streamlit-antd-components` for menu selection (vertical layout by default after API updates).
+- **Feature Placeholders**: Core workflows (intelligence hub, fire missions, ballistics, operations, system ops) render informative stubs so engineers can wire features back in incrementally.
+- **Future Enhancements**: Styling and rich interactions will return once the new `MilitaryUI` implementation is completed.
 
 ## ⚡ GPU Acceleration 
 
@@ -195,7 +195,7 @@ python process.py --input-dir data/documents --limit 5┌───────�
 
 # Access web interface│  (TFTs, FMs,    │    │   VLM Processing     │    │ (Text, Images,  │
 
-streamlit run app/main.py│   Regulations)  │    │                      │    │  Tables, Meta)  │
+PYTHONPATH=$(pwd) streamlit run app/main.py│   Regulations)  │    │                      │    │  Tables, Meta)  │
 
 # Navigate to: http://localhost:8501└─────────────────┘    └──────────────────────┘    └─────────────────┘
 
@@ -266,7 +266,7 @@ Start the Streamlit interface for interactive document processing:│   ├─�
 
 ```bash├── data/
 
-streamlit run app/main.py│   ├── documents/                         # Source PDF files
+PYTHONPATH=$(pwd) streamlit run app/main.py│   ├── documents/                         # Source PDF files
 
 ```│   │   ├── Original PDFs/                 # Original military documents
 
@@ -486,13 +486,15 @@ python system_status.py --services-only   ollama pull nomic-embed-text
 
 - **📁 Secure Storage**: PostgreSQL with standard security practices
 
-- **🚫 No Telemetry**: No usage data collection or external communication5. **Run the application**
+- **🚫 No Telemetry**: No usage data collection or external communication
 
-   ```bash
+## 🚧 Troubleshooting
 
-## 🚧 Troubleshooting   streamlit run app/main.py
+To relaunch the Streamlit UI manually from the repo root:
 
-   ```
+```bash
+PYTHONPATH=$(pwd) streamlit run app/main.py
+```
 
 ### Common Issues
 

@@ -51,7 +51,7 @@ def main():
         sac.MenuItem('BALLISTICS', icon='bullseye', description="Calculate firing solutions."),
         sac.MenuItem('ORDERS PROD', icon='file-earmark-text-fill', description="Generate military orders."),
         sac.MenuItem('SYSTEM OPS', icon='gear-wide-connected', description="Monitor system status and config."),
-    ], orientation='horizontal', size='small', return_index=False, key='main_nav')
+    ], size='sm', return_index=False, key='main_nav')
 
     # --- Main controller logic to render the selected view ---
     if selected_view == 'INTEL DATABASE':
