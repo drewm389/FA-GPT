@@ -40,10 +40,11 @@ FA-GPT has been refactored for better maintainability and cleaner separation of 
 - **Improved Documentation**: Centralized logic makes codebase easier to understand
 
 ### **Current Web Interface Status (v3.1-dev)**
-- **Minimal Shell Active**: The Streamlit UI currently ships as a lightweight placeholder while the full-featured Military UI is being rebuilt.
+- **Interactive Command Shell**: The rebuilt `MilitaryUI` provides working forms, metrics, and stateful panels for every workflow so engineers can validate data flow before reconnecting backend services.
 - **Menu Navigation**: Uses `streamlit-antd-components` for menu selection (vertical layout by default after API updates).
-- **Feature Placeholders**: Core workflows (intelligence hub, fire missions, ballistics, operations, system ops) render informative stubs so engineers can wire features back in incrementally.
-- **Future Enhancements**: Styling and rich interactions will return once the new `MilitaryUI` implementation is completed.
+- **Session-Aware Displays**: Intelligence Hub now logs questions and simulated responses, Fire Support captures targets and gun crews, the Ballistics workspace stores calculations, and Operations tracks mission packets in session state.
+- **Admin Console**: System Ops view surfaces health toggles, session summaries, and runbook guidance for operators.
+- **Future Enhancements**: Swap the simulated responses with live calls into `query_rag.py` and restore visualization once extraction pipelines are reattached.
 
 ## ⚡ GPU Acceleration 
 
@@ -276,15 +277,15 @@ Features:│   │   └── Field Manuals/                 # Army Field Manua
 
 - 📤 Drag-and-drop PDF upload│   └── extracted/                         # Processed document outputs
 
-- 🔍 Real-time processing progress│       └── {publication}/                 # Per-document organized content
+- 🧠 Intelligence Hub for logging doctrinal questions (simulated responses until RAG is reattached)│       └── {publication}/                 # Per-document organized content
 
-- 💬 Natural language querying│           ├── text/                      # Text elements (.txt)
+- 🎯 Fire Support planner for targets, gun crews, and quick status notes│           ├── text/                      # Text elements (.txt)
 
-- 📊 Document insights and analytics│           ├── images/                    # Extracted images (.png)
+- 🧮 Ballistics workspace that stores sample computations in session state│           ├── images/                    # Extracted images (.png)
 
-- 🖼️ Extracted images and tables│           ├── tables/                    # Table data (.json)
+- � Operations dashboard for summarizing missions, commanders, and current phases│           ├── tables/                    # Table data (.json)
 
-│           └── metadata/                  # Element metadata (.json)
+- ⚙️ System Ops console with health toggles, quick runbook reminders, and session diagnostics│           └── metadata/                  # Element metadata (.json)
 
 ### API Integration├── images/                                # Document image cache
 
