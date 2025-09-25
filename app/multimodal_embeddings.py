@@ -55,24 +55,54 @@ class MultimodalEmbedder:
             # Handle text chunking for CLIP's 77 token limit
             processed_texts = []
             for text in texts:
-                # CLIP tokenizer uses BPE with roughly 1.3 tokens per word on average
-                # Conservative estimate: limit to ~50 words (77 tokens / 1.5 tokens per word)
-                words = text.split()
-                if len(words) > 50:
-                    # Take first 50 words to stay well within 77 token limit
-                    truncated_text = ' '.join(words[:50])
+                # Very aggressive preprocessing to handle CLIP tokenizer's strict 77 token limit
+                if not text or not text.strip():
+                    processed_texts.append("document content")
+                    continue
+                
+                # Clean and normalize text first
+                clean_text = ' '.join(text.strip().split())
+                
+                # Multiple fallback strategies for token limit
+                words = clean_text.split()
+                if len(words) > 15:  # Very conservative word limit
+                    # Take first 15 words to ensure we stay under 77 tokens
+                    truncated_text = ' '.join(words[:15])
                     processed_texts.append(truncated_text)
-                    logger.debug(f"Truncated long text from {len(words)} words to 50 words")
+                    logger.debug(f"Word-truncated text from {len(words)} words to 15 words")
+                elif len(clean_text) > 150:  # Character limit check
+                    # Fallback to character truncation if still too long
+                    truncated_text = clean_text[:150].strip()
+                    processed_texts.append(truncated_text)
+                    logger.debug(f"Char-truncated text from {len(clean_text)} chars to 150 chars")
                 else:
-                    processed_texts.append(text)
+                    processed_texts.append(clean_text)
             
-            # Use CLIP for text embeddings
-            text_tokens = clip.tokenize(processed_texts).to(self.device)
-            with torch.no_grad():
-                text_features = self.clip_model.encode_text(text_tokens)
-                text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-            
-            return text_features.cpu().numpy().tolist()
+            # Use CLIP for text embeddings with additional safety checks
+            try:
+                text_tokens = clip.tokenize(processed_texts, truncate=True).to(self.device)
+                with torch.no_grad():
+                    text_features = self.clip_model.encode_text(text_tokens)
+                    text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+                
+                return text_features.cpu().numpy().tolist()
+            except Exception as tokenize_error:
+                logger.warning(f"CLIP tokenization failed, trying emergency fallback: {tokenize_error}")
+                # Emergency fallback: use very short text snippets
+                emergency_texts = []
+                for text in processed_texts:
+                    # Ultimate fallback: just take first few words
+                    words = text.split()[:5]  # Maximum 5 words
+                    emergency_text = ' '.join(words) if words else "text"
+                    emergency_texts.append(emergency_text)
+                
+                text_tokens = clip.tokenize(emergency_texts, truncate=True).to(self.device)
+                with torch.no_grad():
+                    text_features = self.clip_model.encode_text(text_tokens)
+                    text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+                
+                logger.info(f"Emergency fallback successful for {len(emergency_texts)} texts")
+                return text_features.cpu().numpy().tolist()
         except Exception as e:
             logger.error(f"CLIP text embedding failed: {e}")
             raise RuntimeError(f"Text embedding failed: {e}")

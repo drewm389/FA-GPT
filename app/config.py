@@ -43,14 +43,14 @@ class Settings(BaseSettings):
     
     # Database Configuration - PostgreSQL with pgvector + Apache AGE
     # PostgreSQL with pgvector extension for embeddings and Apache AGE for unified knowledge graphs
-    postgres_host: str = "postgres"  # Docker service name or localhost for local dev
+    postgres_host: str = "localhost"  # Docker service name or localhost for local dev
     postgres_port: int = 5432
-    postgres_db: str = "vectordb"  # Database name for unified vector and graph storage
+    postgres_db: str = "fagpt_db"  # Database name for unified vector and graph storage
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
     
     # Ollama Configuration (local LLM/VLM server)
-    ollama_host: str = "ollama"  # Docker service name or localhost for local dev
+    ollama_host: str = "localhost"  # Docker service name or localhost for local dev
     ollama_port: int = 11434  # Default Ollama API port
     
     # Local AI Models Configuration (Consolidated to single VLM)
@@ -67,8 +67,10 @@ class Settings(BaseSettings):
     
     # IBM Docling Configuration
     docling_cache_dir: Path = Path("./.cache/docling")  # Cache for Docling models and data
+    # Extraction Configuration
     enable_ocr: bool = True  # Enable OCR for scanned documents and images
     enable_table_extraction: bool = True  # Extract and parse table structures
+    force_cpu_only: bool = False  # Force CPU-only processing (disable GPU acceleration)
     
     @property
     def postgres_uri(self) -> str:

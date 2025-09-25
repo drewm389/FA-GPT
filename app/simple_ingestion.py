@@ -17,6 +17,7 @@ import json
 import time
 import argparse
 import logging
+import traceback
 from pathlib import Path
 from typing import List, Tuple, Dict
 import base64
@@ -26,6 +27,8 @@ from .config import settings
 from .connectors import get_ollama_client, get_db_connection
 from .multimodal_embeddings import embed_for_rag
 from .logging_config import get_logger
+# NEW: Import the enhanced prompt
+from .prompts import KG_EXTRACTION_PROMPT_ENHANCED
 
 # --- Primary and ONLY Parser Import ---
 # If this import fails, the entire system will stop, as requested.
@@ -184,40 +187,6 @@ def extract_and_store_kg_qwen(doc_elements: List[Dict], doc_source: str):
     client = get_ollama_client()
     conn = None
     
-    # --- Start of New Enhanced Prompt ---
-    kg_prompt = """You are an expert military analyst creating a unified knowledge graph from U.S. Army doctrine, including Field Manuals (FM), Army Techniques Publications (ATP), and Tabular Firing Tables (TFTs). Your task is to extract and structure information related to both tactical gunnery and the operational planning process.
-
-Focus on these entity types:
-- MDMP_Step: A step in the Military Decision Making Process (e.g., "Mission Analysis," "COA Development").
-- Planning_Product: An artifact of the planning process (e.g., "Course of Action," "Commander's Critical Information Requirements," "Decision Support Matrix").
-- Staff_Section: A staff element within a headquarters (e.g., "S3," "G2," "Fire Support Cell").
-- Command_Post_Function: A key activity or cell within a command post (e.g., "Current Operations," "Plans Cell," "Battle Rhythm").
-- GunneryTask: A specific action or step in a gunnery procedure (e.g., "Lay for Direction," "Apply Deflection").
-- SafetyProcedure: A critical safety check or warning (e.g., "Verify Boresight," "Check for Misfire").
-- BallisticData: A complete row from a firing table, representing a firing solution.
-- BallisticVariable: A factor that affects the projectile's trajectory (e.g., "Muzzle Velocity," "Air Density," "Projectile Weight").
-- WeaponSystem: A cannon or howitzer (e.g., "M777A1," "M109A6").
-- Ammunition: A type of projectile or charge (e.g., "M795 HE," "MACS Charge 3").
-- Publication: A referenced manual or document (e.g., "TC 3-09.81," "FM 5-0").
-
-Relationship types:
-- PRECEDES, PART_OF: To show procedural and hierarchical flow in MDMP and Gunnery.
-- PRODUCES: Linking an MDMP_Step to a Planning_Product.
-- RESPONSIBLE_FOR: Linking a Staff_Section to a Planning_Product or Command_Post_Function.
-- INFORMS: Linking a Planning_Product to an MDMP_Step or a decision.
-- REQUIRES_SAFETY_CHECK: Linking a GunneryTask to a mandatory SafetyProcedure.
-- HAS_BALLISTIC_DATA: Linking a WeaponSystem/Ammunition combination to its BallisticData.
-- AFFECTS_TRAJECTORY: Linking a BallisticVariable to BallisticData.
-- REFERENCES_PUBLICATION: Linking a procedure or concept to another manual.
-
-Content to analyze: {content}
-
-Return valid JSON only. For TFT data, create one `BallisticData` entity per row with all columns as properties. For MDMP steps, detail their inputs and outputs.
-{{"entities": [{{"id": "Mission_Analysis", "type": "MDMP_Step", "properties": {{"description": "An iterative planning methodology to understand the situation and mission."}}}}, {{"id": "COA_Sketch", "type": "Planning_Product", "properties": {{"purpose": "A visual representation of a potential solution."}}}}, {{"id": "Determine_Firing_Data", "type": "GunneryTask", "properties": {{"description": "The process of calculating all data required to fire the weapon."}}}}, {{"id": "Misfire_Procedures", "type": "SafetyProcedure", "properties": {{"priority": "High"}}}}],
-"relationships": [{{"source": "Mission_Analysis", "target": "COA_Sketch", "type": "PRODUCES"}}, {{"source": "Determine_Firing_Data", "target": "Misfire_Procedures", "type": "REQUIRES_SAFETY_CHECK"}}]}}
-"""
-    # --- End of New Enhanced Prompt ---
-    
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -238,9 +207,12 @@ Return valid JSON only. For TFT data, create one `BallisticData` entity per row 
             content = element.get('content', '')
             if element.get('type') in ['text', 'table'] and len(content) > 100:
                 try:
+                    # MODIFIED: Use the imported KG_EXTRACTION_PROMPT_ENHANCED
+                    prompt = KG_EXTRACTION_PROMPT_ENHANCED + "\n\n" + content[:2000]
+                    
                     response = client.chat(
                         model=settings.llm_model,
-                        messages=[{'role': 'user', 'content': kg_prompt.format(content=content[:2000])}],
+                        messages=[{'role': 'user', 'content': prompt}],
                         format='json',
                         options={'temperature': 0.1}
                     )
@@ -301,8 +273,8 @@ if __name__ == "__main__":
 Examples:
   %(prog)s --file /path/to/document.pdf
   %(prog)s --input-dir data/documents --test-single file.pdf
-  %(prog)s --input-dir data/documents --limit 5 --verbose
-  %(prog)s --input-dir data/documents --clear-db
+  %(prog)s --batch-all --clear-db --verbose
+  %(prog)s --batch-all
             """
         )
         
@@ -316,6 +288,8 @@ Examples:
                             help="Limit the number of documents to process")
         parser.add_argument("--clear-db", action="store_true",
                             help="Clear existing database entries before processing")
+        parser.add_argument("--batch-all", action="store_true",
+                            help="Process all PDF files in data directory")
         parser.add_argument("--verbose", action="store_true",
                             help="Enable verbose logging (DEBUG level)")
         
@@ -364,21 +338,93 @@ Examples:
         if args.clear_db:
             clear_database()
         
-        if args.file:
+        if args.batch_all:
+            # Find all PDF files in data directory
+            data_path = Path("data")
+            pdf_files = []
+            for pdf_file in data_path.rglob("*.pdf"):
+                if "quarantine" not in str(pdf_file):
+                    pdf_files.append(str(pdf_file))
+            
+            pdf_files = sorted(pdf_files)
+            
+            if not pdf_files:
+                logger.error("❌ No PDF files found in data directory")
+                sys.exit(1)
+            
+            logger.info(f"🚀 Found {len(pdf_files)} PDF files to process")
+            processed = 0
+            failed = 0
+            
+            start_time = time.time()
+            
+            for i, pdf_path in enumerate(pdf_files, 1):
+                try:
+                    doc_name = Path(pdf_path).name
+                    logger.info(f"\n{'='*80}")
+                    logger.info(f"📄 Processing document {i}/{len(pdf_files)}: {doc_name}")
+                    logger.info(f"📁 Path: {pdf_path}")
+                    logger.info(f"{'='*80}")
+                    
+                    doc_start_time = time.time()
+                    process_and_ingest_document(pdf_path)
+                    doc_duration = time.time() - doc_start_time
+                    
+                    processed += 1
+                    logger.info(f"✅ Successfully processed {doc_name} in {doc_duration:.2f}s")
+                    logger.info(f"📊 Progress: {processed}/{len(pdf_files)} documents completed")
+                    
+                except KeyboardInterrupt:
+                    logger.warning(f"⏹️  Processing interrupted by user at document {i}/{len(pdf_files)}")
+                    logger.info(f"📊 Current Progress: {processed} completed, {failed} failed")
+                    break
+                except Exception as e:
+                    failed += 1
+                    error_msg = str(e)
+                    # Truncate very long error messages
+                    if len(error_msg) > 200:
+                        error_msg = error_msg[:200] + "..."
+                    
+                    logger.error(f"❌ Failed to process {Path(pdf_path).name}: {error_msg}")
+                    logger.error(f"Full traceback for {Path(pdf_path).name}: {traceback.format_exc()}")
+                    logger.info(f"📊 Progress: {processed}/{len(pdf_files)} completed, {failed} failed")
+                    
+                    # Continue processing other documents
+                    continue
+            
+            total_duration = time.time() - start_time
+            
+            logger.info(f"\n{'='*80}")
+            logger.info(f"🏁 BATCH PROCESSING COMPLETE!")
+            logger.info(f"📊 Final Statistics:")
+            logger.info(f"   ✅ Successfully processed: {processed} documents")
+            logger.info(f"   ❌ Failed: {failed} documents")
+            logger.info(f"   📈 Success rate: {(processed/len(pdf_files))*100:.1f}%")
+            logger.info(f"   ⏱️  Total time: {total_duration:.2f}s")
+            logger.info(f"   ⚡ Average time per document: {total_duration/len(pdf_files):.2f}s")
+            logger.info(f"{'='*80}")
+            
+        elif args.file:
             pdf_path = args.file
+            if not Path(pdf_path).exists():
+                print(f"❌ PDF not found: {pdf_path}")
+                sys.exit(1)
+            logger.info(f"Running ingestion for single document: {pdf_path}")
+            process_and_ingest_document(pdf_path)
+            logger.info("Single document ingestion completed successfully")
+            
         elif args.test_single:
             pdf_path = str(Path(args.input_dir) / args.test_single)
+            if not Path(pdf_path).exists():
+                print(f"❌ PDF not found: {pdf_path}")
+                sys.exit(1)
+            logger.info(f"Running ingestion for single document: {pdf_path}")
+            process_and_ingest_document(pdf_path)
+            logger.info("Single document ingestion completed successfully")
+            
         else:
-            print("No --file or --test-single provided; nothing to do.")
+            print("No --file, --test-single, or --batch-all provided; nothing to do.")
             sys.exit(0)
-
-        if not Path(pdf_path).exists():
-            print(f"❌ PDF not found: {pdf_path}")
-            sys.exit(1)
-
-        logger.info(f"Running ingestion for single document: {pdf_path}")
-        process_and_ingest_document(pdf_path)
-        logger.info("Single document ingestion completed successfully")
     except Exception as e:
         logger.log_exception(e, "Single document ingestion failed")
         sys.exit(2)

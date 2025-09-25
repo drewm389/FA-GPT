@@ -330,4 +330,6 @@ sample_data/bulk/
 
 # User configuration overrides
 config/user_overrides.yaml
-app/user_config.py
+app/user_config.py# Large PDF files (>100MB)
+data/quarantine/*.pdf
+data/documents/**/*.pdf

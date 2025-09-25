@@ -35,6 +35,9 @@ import numpy as np
 
 from app.config import settings
 from app.connectors import get_ollama_client
+from app.military_vision import analyze_image_with_vlm
+# NEW: Import the document classification prompt
+from app.prompts import DOC_TYPE_IDENTIFICATION_PROMPT
 
 logger = get_logger("enhanced-granite-docling")
 
@@ -45,6 +48,9 @@ class EnhancedGraniteDoclingExtractor:
         if not DOCLING_AVAILABLE:
             raise RuntimeError("Docling is required for enhanced extraction. Please install docling package.")
         
+        # Initialize processing mode attribute
+        self.processing_mode = "GPU"
+        
         # Initialize Ollama client only if needed for VLM analysis
         self.ollama_client = None
         try:
@@ -53,47 +59,139 @@ class EnhancedGraniteDoclingExtractor:
         except Exception as e:
             logger.warning(f"Ollama not available for VLM analysis: {e}")
         
-        # GPU-only document processing - CPU fallback removed per requirement
-        logger.info("🚀 Initializing GPU-only document processing pipeline")
+        # Setup MIOpen environment for stable GPU processing
+        self._setup_miopen_environment()
         
+        # Initialize GPU processing with MIOpen fixes
+        logger.info("🚀 Initializing GPU-accelerated document processing with MIOpen fixes")
+        self._initialize_gpu_processing_with_fixes()
+    
+    def _initialize_gpu_processing_with_fixes(self):
+        """Initialize GPU-accelerated document processing with MIOpen fixes."""
         import torch
         if not torch.cuda.is_available():
-            logger.error("❌ CUDA not available - GPU is required for FA-GPT document processing")
-            logger.error("Please ensure you have a compatible GPU with CUDA/ROCm support")
-            raise RuntimeError("GPU required: CUDA not available")
+            raise RuntimeError("CUDA not available for GPU processing")
         
+        # Test GPU operation first with error handling
         try:
-            # Test GPU operation first
             device = torch.device("cuda:0")
             torch.cuda.set_device(0)
             test_tensor = torch.randn(2, 2).cuda()
             test_result = test_tensor @ test_tensor.T  # Simple matrix multiplication test
             del test_tensor, test_result  # Clean up
             torch.cuda.empty_cache()
-            
             logger.info(f"✅ PyTorch GPU device configured and tested: {device}")
-            
-            # Configure Docling with optimized pipeline options for GPU
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
-            from docling.document_converter import PdfFormatOption
-            
-            # Set up optimized pipeline 
-            pipeline_options = PdfPipelineOptions()
-            pipeline_options.do_ocr = False  # Keep OCR disabled to avoid MIOpen issues
-            pipeline_options.do_table_structure = True
-            
-            format_options = {
-                "pdf": PdfFormatOption(pipeline_options=pipeline_options)
-            }
-            
+        except Exception as e:
+            logger.error(f"GPU test failed: {e}")
+            raise RuntimeError(f"GPU initialization failed: {e}")
+        
+        # Configure Docling with conservative pipeline options to avoid MIOpen issues
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import PdfFormatOption
+        
+        # Set up conservative pipeline to avoid MIOpen issues
+        pipeline_options = PdfPipelineOptions()
+        pipeline_options.do_ocr = False  # Disable OCR to avoid GPU-intensive operations
+        pipeline_options.do_table_structure = False  # Disable table structure to reduce GPU load
+        
+        format_options = {
+            "pdf": PdfFormatOption(pipeline_options=pipeline_options)
+        }
+        
+        try:
             self.converter = DocumentConverter(format_options=format_options)
-            logger.info("✅ Enhanced Docling DocumentConverter initialized with GPU support")
+            self.processing_mode = "GPU"
+            logger.info("✅ Enhanced Docling DocumentConverter initialized with GPU support (conservative mode)")
+            
+            # Initialize content patterns for document analysis
+            self._initialize_content_patterns()
             
         except Exception as e:
-            logger.error(f"❌ GPU initialization failed: {e}")
-            logger.error("FA-GPT requires stable GPU acceleration for document processing")
-            logger.error("Consider checking GPU drivers, CUDA/ROCm installation, or using NVIDIA GPU")
-            raise RuntimeError(f"GPU initialization failed: {e}")
+            logger.error(f"Docling GPU initialization failed: {e}")
+            raise RuntimeError(f"Failed to initialize Docling with GPU: {e}")
+    
+    def _setup_miopen_environment(self):
+        """Setup MIOpen environment variables for stable GPU processing."""
+        import os
+        
+        # Set MIOpen cache to fresh directory to avoid corruption
+        miopen_cache_dir = os.path.expanduser("~/.cache/miopen_new")
+        os.makedirs(miopen_cache_dir, exist_ok=True)
+        os.environ['MIOPEN_USER_DB_PATH'] = miopen_cache_dir
+        
+        # Enable MIOpen logging for debugging
+        os.environ['MIOPEN_ENABLE_LOGGING'] = '1'
+        os.environ['MIOPEN_LOG_LEVEL'] = '4'  # Errors and warnings
+        
+        # Disable problematic MIOpen features that can cause internal errors
+        os.environ['MIOPEN_DEBUG_CONV_WINOGRAD'] = '0'  # Disable Winograd (common source of errors)
+        os.environ['MIOPEN_DEBUG_CONV_IMPLICIT_GEMM'] = '0'  # Disable ImplicitGEMM 
+        os.environ['MIOPEN_DEBUG_GCN_ASM_KERNELS'] = '0'  # Disable assembly kernels
+        
+        # Use more stable convolution algorithms
+        os.environ['MIOPEN_DEBUG_CONV_DIRECT'] = '1'  # Enable direct convolution
+        os.environ['MIOPEN_DEBUG_CONV_GEMM'] = '1'    # Enable GEMM convolution
+        
+        # Set conservative compilation settings
+        os.environ['MIOPEN_COMPILE_PARALLEL_LEVEL'] = '1'  # Single-threaded compilation
+        
+        logger.info("🔧 MIOpen environment configured for stable GPU processing")
+        logger.debug(f"MIOpen cache directory: {miopen_cache_dir}")
+    
+    def _initialize_content_patterns(self):
+        """Initialize content patterns for document analysis."""
+        # Enhanced content-aware detection patterns based on comprehensive analysis of 79 military documents
+        self.content_patterns = {
+            'firing_table': [
+                r'firing table', r'ft\s+\d+', r'ballistic.*data.*safety.*computations', 
+                r'projectile.*m\d+', r'addendum.*ft', r'range.*elevation.*charge',
+                r'quadrant elevation', r'time of flight', r'muzzle velocity', r'deflection',
+                r'propelling charge.*m\d+a\d+', r'155mm.*howitzer', r'danger.*zone'
+            ],
+            'field_manual': [
+                r'fm\s+\d+-\d+', r'field manual', r'fire support.*field artillery.*operations',
+                r'operations.*process', r'targeting', r'tactics', r'commander.*staff',
+                r'army profession.*leadership', r'training.*holistic.*health',
+                r'headquarters.*department.*army', r'distribution.*restriction.*approved'
+            ],
+            'training_circular': [
+                r'tc\s+\d+-\d+\.\d+', r'training circular', r'fire support.*field artillery.*certification',
+                r'map reading.*land navigation', r'field artillery.*manual.*cannon.*gunnery',
+                r'employee engagement', r'certification.*qualification',
+                r'distribution.*restriction.*approved.*public.*release'
+            ]
+        }
+        
+    def _initialize_cpu_processing(self):
+        """Initialize CPU-only document processing."""
+        # Force CPU-only environment before any PyTorch operations
+        import os
+        import torch
+        
+        # Set aggressive CPU-only environment
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Hide GPU from PyTorch
+        os.environ['HIP_VISIBLE_DEVICES'] = ''   # Hide AMD GPU
+        os.environ['PYTORCH_ROCM_ARCH'] = ''     # Disable ROCm
+        
+        # Force PyTorch to CPU mode
+        torch.cuda.is_available = lambda: False
+        
+        # Configure Docling for CPU-only processing
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import PdfFormatOption
+        
+        # Set up CPU-only pipeline with conservative settings
+        pipeline_options = PdfPipelineOptions()
+        pipeline_options.do_ocr = False  # Disable OCR to avoid GPU dependencies
+        pipeline_options.do_table_structure = False  # Disable table structure to avoid GPU models
+        
+        format_options = {
+            "pdf": PdfFormatOption(pipeline_options=pipeline_options)
+        }
+        
+        self.converter = DocumentConverter(format_options=format_options)
+        self.processing_mode = "CPU"
+        logger.info("✅ Enhanced Docling DocumentConverter initialized with CPU-only processing (OCR and table structure disabled)")
         
         # Enhanced content-aware detection patterns based on comprehensive analysis of 79 military documents
         self.content_patterns = {
@@ -219,9 +317,9 @@ class EnhancedGraniteDoclingExtractor:
         Extract structured content from PDF using enhanced instruction-based processing.
         Returns: (text_elements, image_elements)
         """
-        # First attempt with current configuration (GPU or CPU)
+        # Attempt document extraction with current configuration
         try:
-            logger.info("🚀 Starting GPU-accelerated document extraction")
+            logger.info(f"🚀 Starting {self.processing_mode} document extraction (MIOpen fixed)")
             result = self.converter.convert(pdf_path)
             document = result.document
             
@@ -229,7 +327,7 @@ class EnhancedGraniteDoclingExtractor:
             structure_analysis = self._analyze_document_structure(document)
             
             # Extract text elements with content-aware processing
-            text_elements = self._extract_enhanced_text_elements(document, structure_analysis, pdf_path)
+            text_elements = self._extract_enhanced_text_elements(document, structure_analysis)
             
             # Extract and process images with instruction-based VLM
             image_elements = self._extract_enhanced_image_elements(document, pdf_path, structure_analysis)
@@ -246,17 +344,39 @@ class EnhancedGraniteDoclingExtractor:
             return text_elements, image_elements
             
         except RuntimeError as e:
-            # Fail fast on GPU issues - no CPU fallback
+            # Handle GPU issues with MIOpen fixes
             if "miopenStatusInternalError" in str(e):
-                logger.error(f"❌ MIOpen GPU error: {e}")
-                logger.error("This is typically due to AMD ROCm compatibility issues")
-                logger.error("Consider using NVIDIA GPU or checking ROCm installation")
-                logger.error("FA-GPT requires stable GPU acceleration - no CPU fallback available")
-                raise RuntimeError(f"GPU processing failed (MIOpen error): {e}")
+                logger.error(f"❌ MIOpen GPU error detected: {e}")
+                logger.warning("🔧 Attempting MIOpen recovery strategies...")
+                
+                # Try recovery by clearing GPU memory and reinitializing
+                try:
+                    import torch
+                    torch.cuda.empty_cache()  # Clear GPU memory
+                    
+                    # Reinitialize with even more conservative settings
+                    logger.info("🔄 Reinitializing with ultra-conservative GPU settings")
+                    self._setup_miopen_environment()  # Reset environment
+                    
+                    # Try again with the same document
+                    result = self.converter.convert(pdf_path)
+                    document = result.document
+                    
+                    # Continue with normal processing if successful
+                    structure_analysis = self._analyze_document_structure(document)
+                    text_elements = self._extract_enhanced_text_elements(document, structure_analysis)
+                    image_elements = self._extract_enhanced_image_elements(document, pdf_path, structure_analysis)
+                    
+                    logger.info(f"✅ MIOpen recovery successful: {len(text_elements)} text elements, {len(image_elements)} images")
+                    return text_elements, image_elements
+                    
+                except Exception as recovery_error:
+                    logger.error(f"MIOpen recovery failed: {recovery_error}")
+                    raise RuntimeError(f"GPU processing failed with MIOpen error - recovery unsuccessful: {e}")
             else:
-                # Re-raise other GPU errors
-                logger.error(f"❌ GPU extraction failed: {e}")
-                raise RuntimeError(f"GPU processing failed: {e}")
+                # Re-raise other runtime errors
+                logger.error(f"❌ Document extraction failed: {e}")
+                raise RuntimeError(f"Document processing failed: {e}")
             
         except Exception as e:
             error_msg = str(e)
@@ -319,6 +439,16 @@ class EnhancedGraniteDoclingExtractor:
     
     def _classify_document_type(self, text: str) -> str:
         """Classify the type of military document based on actual document patterns."""
+        # NEW: First try enhanced classification if Ollama is available
+        if self.ollama_client:
+            try:
+                enhanced_classification = self._classify_document_type_enhanced(text)
+                if enhanced_classification != "UNKNOWN":
+                    return enhanced_classification
+            except Exception as e:
+                logger.warning(f"Enhanced classification failed, falling back to pattern matching: {e}")
+        
+        # Fallback to pattern matching
         text_lower = text.lower()
         
         # Firing Tables (FT documents)
@@ -340,7 +470,7 @@ class EnhancedGraniteDoclingExtractor:
         elif any(term in text_lower for term in ['ar ', 'army regulation', 'policy', 'command policy']):
             return 'army_regulation'
         # Army Doctrine Publications (ADP documents)
-        elif any(term in text_lower for term in ['adp ', 'army doctrine publication']):
+        elif any(term in text_lower for term in ['adp ', 'army doctorate publication']):
             return 'army_doctrine_publication'
         # Joint Publications (JP documents)
         elif any(term in text_lower for term in ['jp ', 'joint publication']):
@@ -354,6 +484,57 @@ class EnhancedGraniteDoclingExtractor:
         # Default classification
         else:
             return 'military_document'
+
+    def _classify_document_type_enhanced(self, text_content: str) -> str:
+        """
+        Uses the VLM to classify the document type based on its content using enhanced prompts.
+        """
+        if not self.ollama_client:
+            return "UNKNOWN"
+            
+        # Use first 2000 characters for a quick classification
+        content_snippet = text_content[:2000]
+        
+        prompt = (
+            f"{DOC_TYPE_IDENTIFICATION_PROMPT}\n\n"
+            f"DOCUMENT CONTENT SNIPPET:\n{content_snippet}\n\n"
+            "Based on the information above, what is the document type?"
+        )
+        
+        try:
+            logger.info(f"Classifying document using enhanced prompts...")
+            response = self.ollama_client.generate(
+                model="qwen2.5:latest",
+                prompt=prompt,
+                options={"temperature": 0.1}
+            )
+            
+            response_text = response.get("response", "")
+            # Clean up the response to get a single, clean category word
+            # E.g., "Based on the content, the document type is TM." -> "TM"
+            # This regex looks for one of the known acronyms.
+            import re
+            match = re.search(r'\b(AR|FM|ATP|TM|TC|ADP|JP|DA_Pam|FT)\b', response_text, re.IGNORECASE)
+            if match:
+                doc_type = match.group(0).upper()
+                logger.info(f"Document classified as: {doc_type}")
+                # Convert to our internal naming convention
+                type_mapping = {
+                    'AR': 'army_regulation',
+                    'FM': 'field_manual', 
+                    'ATP': 'army_training_publication',
+                    'TM': 'technical_manual',
+                    'TC': 'training_circular',
+                    'ADP': 'army_doctrine_publication',
+                    'JP': 'joint_publication',
+                    'DA_PAM': 'da_pamphlet',
+                    'FT': 'firing_table'
+                }
+                return type_mapping.get(doc_type, 'military_document')
+        except Exception as e:
+            logger.error(f"Error during enhanced document classification: {e}")
+            
+        return "UNKNOWN"
     
     def _detect_content_type(self, text: str, element_type: str) -> str:
         """Detect content type for enhanced processing."""
@@ -375,7 +556,7 @@ class EnhancedGraniteDoclingExtractor:
         else:
             return 'general_text'
     
-    def _extract_enhanced_text_elements(self, document, structure: Dict[str, Any], pdf_path: str) -> List[Dict[str, Any]]:
+    def _extract_enhanced_text_elements(self, document, structure: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract text elements using content-aware instruction-based processing."""
         text_elements = []
         
@@ -620,15 +801,11 @@ class EnhancedGraniteDoclingExtractor:
             # Get document content for context
             doc_dict = document.model_dump()
             
-            # Look for images in both 'pictures' and 'content' fields for robustness
+            # Look for images in the pictures field (correct Docling structure)
             pictures = doc_dict.get('pictures', [])
-            content_items = doc_dict.get('content', [])
+            logger.info(f"Found {len(pictures)} pictures in document")
             
-            all_potential_images = pictures + [item for item in content_items if 'image' in item.get('label', '').lower() or item.get('label') == 'figure']
-            
-            logger.info(f"Found {len(all_potential_images)} potential images in document")
-            
-            for i, item in enumerate(all_potential_images):
+            for i, item in enumerate(pictures):
                 try:
                     # Skip None items
                     if item is None:
@@ -728,22 +905,18 @@ class EnhancedGraniteDoclingExtractor:
         except:
             caption = ""
         
-        if any(term in caption for term in ['table']):
-            return 'table'
-        elif any(term in caption for term in ['graph']):
-            return 'graph'
-        elif any(term in caption for term in ['chart']):
+        if any(term in caption for term in ['chart', 'table', 'firing']):
             return 'chart'
-        elif any(term in caption for term in ['figure', 'diagram', 'schematic', 'illustration']):
-            return 'figure'
+        elif any(term in caption for term in ['diagram', 'figure', 'schematic']):
+            return 'technical_diagram'
         elif any(term in caption for term in ['photo', 'image', 'picture']):
-            return 'picture'
+            return 'photograph'
         elif structure['content_types'].get('firing_table') and any(term in caption for term in ['range', 'elevation']):
-            return 'chart' # Firing tables are charts
+            return 'firing_table_chart'
         else:
-            return 'figure' # Default to figure
+            return 'general_figure'
     
-    def _save_image_to_document_folder(self, image_data: bytes, item: Any, pdf_path: str, image_type: str = 'figure') -> str:
+    def _save_image_to_document_folder(self, image_data: bytes, item: Any, pdf_path: str, image_type: str = 'general_figure') -> str:
         """Save extracted image to the document's organized subfolder structure."""
         try:
             # Get document name from PDF path
@@ -755,14 +928,14 @@ class EnhancedGraniteDoclingExtractor:
             # Create subfolder based on image type
             subfolder_map = {
                 'chart': 'charts',
-                'table': 'tables',
-                'graph': 'graphs',
-                'figure': 'figures',
-                'picture': 'pictures'
+                'firing_table_chart': 'firing_tables', 
+                'technical_diagram': 'diagrams',
+                'photograph': 'photographs',
+                'general_figure': 'figures'
             }
             
             subfolder = subfolder_map.get(image_type, 'figures')
-            doc_images_dir = doc_base_dir / subfolder
+            doc_images_dir = doc_base_dir / 'images' / subfolder
             doc_images_dir.mkdir(exist_ok=True, parents=True)
             
             # Also create other organized folders for this document
@@ -786,9 +959,9 @@ class EnhancedGraniteDoclingExtractor:
             
             # Determine file extension from image data
             file_ext = ".png"  # Default
-            if image_data.startswith(b'\xff\xd8'):
+            if image_data.startswith(b'\\xff\\xd8'):
                 file_ext = ".jpg"
-            elif image_data.startswith(b'\x89PNG'):
+            elif image_data.startswith(b'\\x89PNG'):
                 file_ext = ".png"
             elif image_data.startswith(b'GIF'):
                 file_ext = ".gif"
@@ -811,20 +984,13 @@ class EnhancedGraniteDoclingExtractor:
     def _ensure_document_folder_structure(self, doc_base_dir: Path) -> None:
         """Ensure the complete folder structure exists for a document."""
         try:
-            # Create organized subfolders for visual content
-            visual_subfolders = [
-                'pictures',
-                'charts',
-                'tables',
-                'graphs',
-                'figures'
-            ]
-            for subfolder in visual_subfolders:
-                folder_path = doc_base_dir / subfolder
-                folder_path.mkdir(exist_ok=True, parents=True)
-
-            # Create organized subfolders for text and data
-            other_subfolders = [
+            # Create organized subfolders
+            subfolders = [
+                'images/charts',
+                'images/diagrams', 
+                'images/photographs',
+                'images/firing_tables',
+                'images/figures',
                 'text/procedures',
                 'text/warnings',
                 'text/specifications',
@@ -835,7 +1001,7 @@ class EnhancedGraniteDoclingExtractor:
                 'analysis'
             ]
             
-            for subfolder in other_subfolders:
+            for subfolder in subfolders:
                 folder_path = doc_base_dir / subfolder
                 folder_path.mkdir(exist_ok=True, parents=True)
                 
@@ -950,7 +1116,7 @@ class EnhancedGraniteDoclingExtractor:
             return f"metadata_save_failed_{datetime.now().isoformat()}"
     
     def _process_image_with_enhanced_vml(self, image_data: bytes, item: Dict, image_type: str, structure: Dict[str, Any], pdf_path: str) -> Optional[Dict[str, Any]]:
-        """Process image using Qwen 2.5 VL with content-specific instructions and save to organized document folder."""
+        """Process image using Qwen 2.5 VL with dynamic prompt selection based on document type."""
         
         # Save image to organized document folder first
         saved_image_path = self._save_image_to_document_folder(image_data, item, pdf_path, image_type)
@@ -969,51 +1135,60 @@ class EnhancedGraniteDoclingExtractor:
             }
         
         try:
-            # Convert image to base64
-            if isinstance(image_data, bytes):
-                image_b64 = base64.b64encode(image_data).decode('utf-8')
-            else:
-                image_b64 = image_data
+            # --- MODIFIED: Dynamic Prompt Selection Logic ---
             
-            # Create content-specific prompt
-            prompt = self._create_image_analysis_prompt(image_type, structure)
+            # Get document type from structure
+            doc_type = structure.get('document_type', 'military_document')
             
-            # Use Qwen 2.5 VL with enhanced instruction
-            logger.info(f"Processing image with Qwen 2.5 VL model: {settings.vlm_model}")
-            response = self.ollama_client.generate(
-                model=settings.vlm_model,
-                prompt=prompt,
-                images=[image_b64],
-                stream=False
+            # Select appropriate image type hint based on document type and image type
+            image_type_hint = 'GENERIC'  # Default
+            
+            # Heuristics to guess the image type hint based on document classification
+            if doc_type == "technical_manual" and "diagram" in image_type.lower():
+                image_type_hint = "TECHNICAL_DIAGRAM"
+            elif doc_type == "firing_table" or "table" in image_type.lower() or "chart" in image_type.lower():
+                image_type_hint = "FIRING_TABLE"
+            elif "map" in image_type.lower() or "graphic" in image_type.lower():
+                image_type_hint = "TACTICAL_MAP"
+            elif doc_type in ["field_manual", "army_training_publication"] and ("process" in image_type.lower() or "mdmp" in str(structure).lower()):
+                image_type_hint = "MDMP_CHART"
+            elif image_type in ["technical_diagram", "diagram"]:
+                image_type_hint = "TECHNICAL_DIAGRAM"
+            
+            # Get surrounding text as context (if available)
+            context_text = ""
+            try:
+                # Extract some context from the structure for better analysis
+                if structure.get('content_types'):
+                    context_text = f"Document contains: {', '.join([k for k, v in structure['content_types'].items() if v])}"
+            except:
+                pass
+            
+            # Use our enhanced analyze_image_with_vlm function with dynamic prompt selection
+            analysis_result = analyze_image_with_vlm(
+                saved_image_path,  # Use saved path instead of base64
+                document_context=context_text,
+                image_type_hint=image_type_hint
             )
             
-            if response and 'response' in response:
-                analysis_text = response['response']
-                
-                # Try to parse structured response
-                try:
-                    analysis_json = json.loads(analysis_text)
-                    analysis_json['image_type'] = image_type
-                    analysis_json['extraction_method'] = 'qwen2.5vl_enhanced'
-                    analysis_json['confidence'] = 0.9
-                    analysis_json['saved_path'] = saved_image_path
-                    return analysis_json
-                except json.JSONDecodeError:
-                    # Return structured text response
-                    return {
-                        'description': analysis_text,
-                        'image_type': image_type,
-                        'extraction_method': 'qwen2.5vl_enhanced',
-                        'has_text': 'text' in analysis_text.lower(),
-                        'has_data': 'data' in analysis_text.lower() or 'table' in analysis_text.lower(),
-                        'confidence': 0.8,
-                        'saved_path': saved_image_path
-                    }
+            logger.info(f"Analyzed image using '{image_type_hint}' prompt type")
+            
+            # Return structured response
+            return {
+                'description': analysis_result,
+                'image_type': image_type,
+                'prompt_type_used': image_type_hint,
+                'extraction_method': 'qwen2.5vl_enhanced_dynamic',
+                'has_text': 'text' in analysis_result.lower(),
+                'has_data': 'data' in analysis_result.lower() or 'table' in analysis_result.lower(),
+                'confidence': 0.9,
+                'saved_path': saved_image_path
+            }
         
         except Exception as e:
-            logger.error(f"Error in Qwen 2.5 VL processing: {e}")
+            logger.error(f"Error in enhanced VLM processing: {e}")
             return {
-                'description': f'Image of type: {image_type} (VLM processing failed)',
+                'description': f'Image of type: {image_type} (Enhanced VLM processing failed)',
                 'image_type': image_type,
                 'extraction_method': 'qwen2.5vl_fallback',
                 'error': str(e),
