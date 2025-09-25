@@ -39,6 +39,12 @@ FA-GPT has been refactored for better maintainability and cleaner separation of 
 - **Better Testing**: Modular components allow for targeted unit testing
 - **Improved Documentation**: Centralized logic makes codebase easier to understand
 
+### **Enhanced User Interface (v3.0)**
+- **Modern Navigation**: Replaced tabs with `streamlit-antd-components` menu system for cleaner UX
+- **Improved Layout**: Container-based organization for better visual grouping
+- **Enhanced Responsiveness**: Better mobile and desktop experience
+- **Professional Styling**: Military-themed design with improved visual hierarchy
+
 ## ⚡ GPU Acceleration 
 
 ## 🎯 Overview
