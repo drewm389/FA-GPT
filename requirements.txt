@@ -19,8 +19,7 @@ Pillow>=10.3.0
 sentence-transformers==2.2.2
 open-clip-torch>=2.20.0
 transformers>=4.53.0
-torch>=2.2.2
-torchvision>=0.17.0
+# torch and torchvision are pre-installed in ROCm PyTorch base image
 
 # Image Captioning and Model Quantization
 accelerate>=0.26.0

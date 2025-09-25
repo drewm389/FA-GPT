@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM rocm/pytorch:rocm6.1.1-runtime-pytorch2.2.0-py3.11
 
 # Install system dependencies for Docling, OCR, and Granite-Docling-258M
 RUN apt-get update && apt-get install -y \

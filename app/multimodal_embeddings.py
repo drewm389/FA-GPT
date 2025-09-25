@@ -52,8 +52,22 @@ class MultimodalEmbedder:
             return []
         
         try:
+            # Handle text chunking for CLIP's 77 token limit
+            processed_texts = []
+            for text in texts:
+                # CLIP tokenizer uses BPE with roughly 1.3 tokens per word on average
+                # Conservative estimate: limit to ~50 words (77 tokens / 1.5 tokens per word)
+                words = text.split()
+                if len(words) > 50:
+                    # Take first 50 words to stay well within 77 token limit
+                    truncated_text = ' '.join(words[:50])
+                    processed_texts.append(truncated_text)
+                    logger.debug(f"Truncated long text from {len(words)} words to 50 words")
+                else:
+                    processed_texts.append(text)
+            
             # Use CLIP for text embeddings
-            text_tokens = clip.tokenize(texts).to(self.device)
+            text_tokens = clip.tokenize(processed_texts).to(self.device)
             with torch.no_grad():
                 text_features = self.clip_model.encode_text(text_tokens)
                 text_features = text_features / text_features.norm(dim=-1, keepdim=True)

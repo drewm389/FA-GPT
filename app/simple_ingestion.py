@@ -6,8 +6,9 @@ This module handles the complete document processing pipeline using the primary
 and most advanced extraction method: `enhanced_granite_multimodal_parsing`.
 
 This pipeline does NOT have a fallback mechanism. If the primary extraction
-method fails, the ingestion process will stop and raise an error. This ensures
-that only the highest quality data is ingested.
+method fails, the ingestion process will stop and raise an error. This ensure    except Exception as e:
+        logger.log_exception(e, "Single document ingestion failed")
+        sys.exit(2)hat only the highest quality data is ingested.
 """
 
 import os
@@ -183,21 +184,21 @@ def extract_and_store_kg_qwen(doc_elements: List[Dict], doc_source: str):
     client = get_ollama_client()
     conn = None
     
-    # Unified Knowledge Graph Prompt for Tactical and Operational Domains
+    # --- Start of New Enhanced Prompt ---
     kg_prompt = """You are an expert military analyst creating a unified knowledge graph from U.S. Army doctrine, including Field Manuals (FM), Army Techniques Publications (ATP), and Tabular Firing Tables (TFTs). Your task is to extract and structure information related to both tactical gunnery and the operational planning process.
 
 Focus on these entity types:
-- MDMP_Step: A step in the Military Decision Making Process (e.g., 'Mission Analysis,' 'COA Development').
-- Planning_Product: An artifact of the planning process (e.g., 'Course of Action,' 'Commander Critical Information Requirements,' 'Decision Support Matrix').
-- Staff_Section: A staff element within a headquarters (e.g., 'S3,' 'G2,' 'Fire Support Cell').
-- Command_Post_Function: A key activity or cell within a command post (e.g., 'Current Operations,' 'Plans Cell,' 'Battle Rhythm').
-- GunneryTask: A specific action or step in a gunnery procedure (e.g., 'Lay for Direction,' 'Apply Deflection').
-- SafetyProcedure: A critical safety check or warning (e.g., 'Verify Boresight,' 'Check for Misfire').
+- MDMP_Step: A step in the Military Decision Making Process (e.g., "Mission Analysis," "COA Development").
+- Planning_Product: An artifact of the planning process (e.g., "Course of Action," "Commander's Critical Information Requirements," "Decision Support Matrix").
+- Staff_Section: A staff element within a headquarters (e.g., "S3," "G2," "Fire Support Cell").
+- Command_Post_Function: A key activity or cell within a command post (e.g., "Current Operations," "Plans Cell," "Battle Rhythm").
+- GunneryTask: A specific action or step in a gunnery procedure (e.g., "Lay for Direction," "Apply Deflection").
+- SafetyProcedure: A critical safety check or warning (e.g., "Verify Boresight," "Check for Misfire").
 - BallisticData: A complete row from a firing table, representing a firing solution.
-- BallisticVariable: A factor that affects the projectile trajectory (e.g., 'Muzzle Velocity,' 'Air Density,' 'Projectile Weight').
-- WeaponSystem: A cannon or howitzer (e.g., 'M777A1,' 'M109A6').
-- Ammunition: A type of projectile or charge (e.g., 'M795 HE,' 'MACS Charge 3').
-- Publication: A referenced manual or document (e.g., 'TC 3-09.81,' 'FM 5-0').
+- BallisticVariable: A factor that affects the projectile's trajectory (e.g., "Muzzle Velocity," "Air Density," "Projectile Weight").
+- WeaponSystem: A cannon or howitzer (e.g., "M777A1," "M109A6").
+- Ammunition: A type of projectile or charge (e.g., "M795 HE," "MACS Charge 3").
+- Publication: A referenced manual or document (e.g., "TC 3-09.81," "FM 5-0").
 
 Relationship types:
 - PRECEDES, PART_OF: To show procedural and hierarchical flow in MDMP and Gunnery.
@@ -211,10 +212,11 @@ Relationship types:
 
 Content to analyze: {content}
 
-Return valid JSON only. For TFT data, create one BallisticData entity per row with all columns as properties. For MDMP steps, detail their inputs and outputs.
+Return valid JSON only. For TFT data, create one `BallisticData` entity per row with all columns as properties. For MDMP steps, detail their inputs and outputs.
 {{"entities": [{{"id": "Mission_Analysis", "type": "MDMP_Step", "properties": {{"description": "An iterative planning methodology to understand the situation and mission."}}}}, {{"id": "COA_Sketch", "type": "Planning_Product", "properties": {{"purpose": "A visual representation of a potential solution."}}}}, {{"id": "Determine_Firing_Data", "type": "GunneryTask", "properties": {{"description": "The process of calculating all data required to fire the weapon."}}}}, {{"id": "Misfire_Procedures", "type": "SafetyProcedure", "properties": {{"priority": "High"}}}}],
 "relationships": [{{"source": "Mission_Analysis", "target": "COA_Sketch", "type": "PRODUCES"}}, {{"source": "Determine_Firing_Data", "target": "Misfire_Procedures", "type": "REQUIRES_SAFETY_CHECK"}}]}}
 """
+    # --- End of New Enhanced Prompt ---
     
     try:
         conn = get_db_connection()
@@ -378,5 +380,5 @@ Examples:
         process_and_ingest_document(pdf_path)
         logger.info("Single document ingestion completed successfully")
     except Exception as e:
-        logger.exception(f"Single document ingestion failed: {e}")
+        logger.log_exception(e, "Single document ingestion failed")
         sys.exit(2)

@@ -53,67 +53,128 @@ class EnhancedGraniteDoclingExtractor:
         except Exception as e:
             logger.warning(f"Ollama not available for VLM analysis: {e}")
         
-        # Initialize DocumentConverter with GPU optimization where possible
-        try:
-            # Set up PyTorch to use ROCm GPU
-            import torch
-            if torch.cuda.is_available():
-                # Force PyTorch to use CUDA/ROCm 
-                device = torch.device("cuda:0")
-                torch.cuda.set_device(0)
-                logger.info(f"PyTorch GPU device configured: {device}")
-                
-                # Configure Docling with optimized pipeline options
-                from docling.datamodel.pipeline_options import PdfPipelineOptions
-                from docling.document_converter import PdfFormatOption
-                
-                # Set up optimized pipeline without OCR to avoid MIOpen
-                pipeline_options = PdfPipelineOptions()
-                pipeline_options.do_ocr = False  # Keep OCR disabled to avoid MIOpen
-                pipeline_options.do_table_structure = True
-                # Note: GPU device is handled by PyTorch directly, not through pipeline options
-                
-                format_options = {
-                    "pdf": PdfFormatOption(pipeline_options=pipeline_options)
-                }
-                
-                self.converter = DocumentConverter(format_options=format_options)
-                logger.info(f"Enhanced Docling DocumentConverter initialized with PyTorch GPU support")
-            else:
-                # Fallback to CPU if GPU not available
-                self.converter = DocumentConverter()
-                logger.info("Enhanced Docling DocumentConverter initialized with CPU processing")
-                
-        except Exception as e:
-            logger.warning(f"GPU configuration failed, using basic setup: {e}")
-            self.converter = DocumentConverter()
-            logger.info("Enhanced Docling DocumentConverter initialized with basic configuration")
+        # GPU-only document processing - CPU fallback removed per requirement
+        logger.info("🚀 Initializing GPU-only document processing pipeline")
         
-        # Military document content patterns
+        import torch
+        if not torch.cuda.is_available():
+            logger.error("❌ CUDA not available - GPU is required for FA-GPT document processing")
+            logger.error("Please ensure you have a compatible GPU with CUDA/ROCm support")
+            raise RuntimeError("GPU required: CUDA not available")
+        
+        try:
+            # Test GPU operation first
+            device = torch.device("cuda:0")
+            torch.cuda.set_device(0)
+            test_tensor = torch.randn(2, 2).cuda()
+            test_result = test_tensor @ test_tensor.T  # Simple matrix multiplication test
+            del test_tensor, test_result  # Clean up
+            torch.cuda.empty_cache()
+            
+            logger.info(f"✅ PyTorch GPU device configured and tested: {device}")
+            
+            # Configure Docling with optimized pipeline options for GPU
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+            from docling.document_converter import PdfFormatOption
+            
+            # Set up optimized pipeline 
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = False  # Keep OCR disabled to avoid MIOpen issues
+            pipeline_options.do_table_structure = True
+            
+            format_options = {
+                "pdf": PdfFormatOption(pipeline_options=pipeline_options)
+            }
+            
+            self.converter = DocumentConverter(format_options=format_options)
+            logger.info("✅ Enhanced Docling DocumentConverter initialized with GPU support")
+            
+        except Exception as e:
+            logger.error(f"❌ GPU initialization failed: {e}")
+            logger.error("FA-GPT requires stable GPU acceleration for document processing")
+            logger.error("Consider checking GPU drivers, CUDA/ROCm installation, or using NVIDIA GPU")
+            raise RuntimeError(f"GPU initialization failed: {e}")
+        
+        # Enhanced content-aware detection patterns based on comprehensive analysis of 79 military documents
         self.content_patterns = {
             'firing_table': [
-                r'firing table', r'range table', r'ballistic', r'charge\s+\d+',
-                r'elevation', r'azimuth', r'deflection', r'mils'
+                r'firing table', r'ft\s+\d+', r'ballistic.*data.*safety.*computations', 
+                r'projectile.*m\d+', r'addendum.*ft', r'range.*elevation.*charge',
+                r'quadrant elevation', r'time of flight', r'muzzle velocity', r'deflection',
+                r'propelling charge.*m\d+a\d+', r'155mm.*howitzer', r'danger.*zone'
+            ],
+            'field_manual': [
+                r'fm\s+\d+-\d+', r'field manual', r'fire support.*field artillery.*operations',
+                r'operations.*process', r'targeting', r'tactics', r'commander.*staff',
+                r'army profession.*leadership', r'training.*holistic.*health',
+                r'headquarters.*department.*army', r'distribution.*restriction.*approved'
+            ],
+            'army_training_publication': [
+                r'atp\s+\d+-\d+\.\d+', r'army.*techniques.*publication', r'techniques.*for',
+                r'field.*artillery.*cannon.*battery', r'paladin.*operations', r'mlrs.*himars',
+                r'counterfire.*weapons.*locating', r'observed.*fires', r'jfire',
+                r'command.*post.*organization', r'multi-service.*tactics'
+            ],
+            'technical_manual': [
+                r'tm\s+\d+-\d+-\d+-\d+', r'operator.*manual', r'howitzer.*medium.*self-propelled',
+                r'155mm.*m109a6', r'nsn\s+\d+-\d+-\d+-\d+', r'eic.*\d+\w+',
+                r'pmcs.*preventive.*maintenance', r'warning.*radioactive.*material',
+                r'distribution.*statement.*approved.*public.*release'
+            ],
+            'training_circular': [
+                r'tc\s+\d+-\d+\.\d+', r'training circular', r'fire support.*field artillery.*certification',
+                r'map reading.*land navigation', r'field artillery.*manual.*cannon.*gunnery',
+                r'employee engagement', r'certification.*qualification',
+                r'distribution.*restriction.*approved.*public.*release'
+            ],
+            'army_regulation': [
+                r'army regulation\s+\d+-\d+', r'ar\s+\d+-\d+', r'army.*unit.*status.*reporting',
+                r'preparing.*managing.*correspondence', r'army.*safety.*occupational.*health',
+                r'range.*safety', r'army.*emergency.*management', r'army.*profession.*leadership.*policy',
+                r'army.*command.*policy', r'headquarters.*department.*army'
+            ],
+            'army_doctrine_publication': [
+                r'adp\s+\d+-\d+', r'army doctrine publication', r'fires', 
+                r'defense.*support.*civil.*authorities', r'operations.*process',
+                r'distribution.*restriction.*approved.*public.*release'
+            ],
+            'joint_publication': [
+                r'jp\s+\d+-\d+', r'joint publication', r'defense.*support.*civil.*authorities',
+                r'multi-service.*tactics.*techniques.*procedures'
+            ],
+            'department_army_pamphlet': [
+                r'da.*pam.*\d+-\d+', r'department.*army.*pamphlet',
+                r'noncommissioned.*officer.*professional.*development',
+                r'officer.*talent.*management', r'effective.*writing.*army.*leaders'
             ],
             'safety_warning': [
-                r'warning', r'caution', r'danger', r'safety', r'hazard',
-                r'⚠', r'warning:', r'caution:', r'danger:'
+                r'warning', r'caution', r'danger', r'safety', r'hazard', r'radioactive.*material',
+                r'tritium.*hydrogen', r'distribution.*restriction', r'⚠', r'warning:', r'caution:'
             ],
             'maintenance_procedure': [
-                r'maintenance', r'procedure', r'step\s+\d+', r'pmcs',
-                r'lubrication', r'inspection', r'repair', r'replace'
+                r'pmcs', r'preventive.*maintenance.*checks.*services', r'maintenance.*procedure',
+                r'step\s+\d+', r'inspection', r'lubrication', r'service.*interval',
+                r'torque.*specification', r'replacement.*criteria'
             ],
-            'technical_specification': [
-                r'specification', r'tolerance', r'dimension', r'weight',
-                r'capacity', r'pressure', r'temperature', r'rpm'
+            'ballistic_data': [
+                r'ballistic.*data.*safety.*computations', r'firing.*data', r'charge.*m\d+a\d+',
+                r'range.*meters', r'elevation.*mils', r'projectile.*family',
+                r'muzzle.*velocity.*m/s', r'time.*flight.*seconds'
             ],
-            'equipment_diagram': [
-                r'figure\s+\d+', r'diagram', r'schematic', r'assembly',
-                r'exploded view', r'cross section', r'cutaway'
+            'equipment_specification': [
+                r'nsn\s+\d+-\d+-\d+-\d+', r'eic.*\d+\w+', r'howitzer.*155mm',
+                r'm109a6.*paladin', r'm777.*lightweight', r'mlrs.*himars',
+                r'technical.*specification', r'performance.*parameter'
+            ],
+            'operational_procedures': [
+                r'fire.*mission.*procedure', r'call.*for.*fire', r'target.*acquisition',
+                r'fire.*support.*coordination', r'artillery.*raid', r'counterfire',
+                r'fire.*direction.*center', r'battalion.*operations'
             ],
             'ammunition_data': [
-                r'ammunition', r'round', r'projectile', r'fuze', r'charge',
-                r'propellant', r'cartridge', r'shell'
+                r'projectile.*m\d+', r'm795.*he', r'm825.*smoke', r'm483.*dpicm',
+                r'm549.*rocket.*assisted', r'fascam.*adam.*raam', r'sadarm',
+                r'fuze.*setting', r'propellant.*charge', r'ammunition.*family'
             ]
         }
         
@@ -158,8 +219,9 @@ class EnhancedGraniteDoclingExtractor:
         Extract structured content from PDF using enhanced instruction-based processing.
         Returns: (text_elements, image_elements)
         """
+        # First attempt with current configuration (GPU or CPU)
         try:
-            # Convert document with enhanced Docling pipeline
+            logger.info("🚀 Starting GPU-accelerated document extraction")
             result = self.converter.convert(pdf_path)
             document = result.document
             
@@ -182,6 +244,19 @@ class EnhancedGraniteDoclingExtractor:
             logger.info(f"Enhanced extraction: {len(text_elements)} text elements, {len(image_elements)} images")
             logger.info(f"Document organized in: {settings.images_dir / Path(pdf_path).stem}")
             return text_elements, image_elements
+            
+        except RuntimeError as e:
+            # Fail fast on GPU issues - no CPU fallback
+            if "miopenStatusInternalError" in str(e):
+                logger.error(f"❌ MIOpen GPU error: {e}")
+                logger.error("This is typically due to AMD ROCm compatibility issues")
+                logger.error("Consider using NVIDIA GPU or checking ROCm installation")
+                logger.error("FA-GPT requires stable GPU acceleration - no CPU fallback available")
+                raise RuntimeError(f"GPU processing failed (MIOpen error): {e}")
+            else:
+                # Re-raise other GPU errors
+                logger.error(f"❌ GPU extraction failed: {e}")
+                raise RuntimeError(f"GPU processing failed: {e}")
             
         except Exception as e:
             error_msg = str(e)
@@ -243,21 +318,42 @@ class EnhancedGraniteDoclingExtractor:
             }
     
     def _classify_document_type(self, text: str) -> str:
-        """Classify the type of military document."""
+        """Classify the type of military document based on actual document patterns."""
         text_lower = text.lower()
         
-        if any(term in text_lower for term in ['firing table', 'ft ', 'range table']):
+        # Firing Tables (FT documents)
+        if any(term in text_lower for term in ['firing table', 'ft ', 'range table', 'ballistic data', 'addendum']):
             return 'firing_table'
-        elif any(term in text_lower for term in ['technical manual', 'tm ', 'maintenance']):
+        # Field Manuals (FM documents) 
+        elif any(term in text_lower for term in ['fm ', 'field manual', 'fire support', 'operations', 'tactics']):
+            return 'field_manual'
+        # Army Training Publications (ATP documents)
+        elif any(term in text_lower for term in ['atp ', 'army techniques publication', 'techniques for']):
+            return 'army_training_publication'
+        # Technical Manuals (TM documents)
+        elif any(term in text_lower for term in ['tm ', 'technical manual', 'operator', 'maintenance', 'pmcs']):
             return 'technical_manual'
-        elif any(term in text_lower for term in ['operator manual', 'operator\'s manual']):
-            return 'operator_manual'
-        elif any(term in text_lower for term in ['safety', 'warning', 'hazard']):
-            return 'safety_manual'
-        elif any(term in text_lower for term in ['ammunition', 'round', 'projectile']):
-            return 'ammunition_manual'
+        # Training Circulars (TC documents)
+        elif any(term in text_lower for term in ['tc ', 'training circular', 'certification', 'qualification']):
+            return 'training_circular'
+        # Army Regulations (AR documents)
+        elif any(term in text_lower for term in ['ar ', 'army regulation', 'policy', 'command policy']):
+            return 'army_regulation'
+        # Army Doctrine Publications (ADP documents)
+        elif any(term in text_lower for term in ['adp ', 'army doctrine publication']):
+            return 'army_doctrine_publication'
+        # Joint Publications (JP documents)
+        elif any(term in text_lower for term in ['jp ', 'joint publication']):
+            return 'joint_publication'
+        # Department of Army Pamphlets (DA PAM)
+        elif any(term in text_lower for term in ['da pam', 'department of the army pamphlet']):
+            return 'da_pamphlet'
+        # Safety/Emergency documents
+        elif any(term in text_lower for term in ['safety', 'emergency', 'hazard', 'range safety']):
+            return 'safety_document'
+        # Default classification
         else:
-            return 'general_manual'
+            return 'military_document'
     
     def _detect_content_type(self, text: str, element_type: str) -> str:
         """Detect content type for enhanced processing."""
@@ -911,63 +1007,340 @@ class EnhancedGraniteDoclingExtractor:
             }
     
     def _create_image_analysis_prompt(self, image_type: str, structure: Dict[str, Any]) -> str:
-        """Create content-specific analysis prompt optimized for Qwen 2.5 VL model."""
+        """Create content-specific analysis prompt optimized for Qwen 2.5 VL model based on comprehensive document analysis."""
         
-        base_prompt = """You are analyzing a military document image using advanced vision-language understanding. Provide detailed, structured analysis focusing on extracting actionable information for field artillery operations.
+        base_prompt = """MILITARY DOCUMENT VISION ANALYSIS - Qwen 2.5 VL
 
-General requirements:
-1. Describe what you see using precise military terminology
-2. Extract ALL visible text, numbers, measurements, and labels
-3. Identify key components, systems, procedures, or equipment shown
-4. Note any safety warnings, cautions, or critical operational information
-5. Structure your response in clear, parseable format for RAG integration
+You are analyzing military document images with advanced vision-language understanding. Extract actionable intelligence for field artillery operations, maintenance, and military planning.
 
-Provide comprehensive analysis with high attention to detail."""
+CORE EXTRACTION REQUIREMENTS:
+1. MILITARY NOMENCLATURE: Use precise designations (M109A6 Paladin, M795 HE, FT 155-AR-2, ATP 3-09.50)
+2. DOCUMENT CLASSIFICATION: Identify publication type and extract full designators
+3. NUMERICAL PRECISION: Extract ALL numbers with units (ranges in meters, elevations in mils, charges in kg)
+4. SAFETY PROTOCOLS: Identify WARNING/CAUTION/NOTE hierarchical safety information
+5. PROCEDURAL SEQUENCES: Extract numbered steps and operational procedures in order
+6. CROSS-REFERENCES: Note figure numbers, table references, and related publications
+7. TECHNICAL SPECIFICATIONS: Extract NSN numbers, part designations, and measurements
+
+MILITARY PUBLICATION TYPES TO RECOGNIZE:
+- Firing Tables (FT): Ballistic data, projectile specifications, safety computations
+- Field Manuals (FM): Doctrine, tactics, organizational guidance
+- Army Training Publications (ATP): Detailed procedures, equipment operations
+- Technical Manuals (TM): Equipment operation, maintenance, PMCS procedures
+- Training Circulars (TC): Certification, qualification standards
+- Army Regulations (AR): Policy, command guidance, safety regulations
+
+Structure output for RAG integration with clear hierarchical organization."""
         
         type_specific_prompts = {
             'chart': """
-CHART/TABLE ANALYSIS:
-1. Chart Type: Identify the specific type (bar chart, line graph, data table, firing table)
-2. Data Extraction: Extract ALL numerical values, units, and measurements
-3. Text Content: Transcribe all visible text including headers, labels, and legends
-4. Military Context: Identify weapon systems, ammunition types, ranges, elevations
-5. Conditions: Note environmental conditions, charge data, or modifiers
-6. Accuracy: Pay special attention to precise numerical data for ballistic calculations
+MILITARY DATA TABLE/CHART EXTRACTION:
 
-Output Format: Structured text with clear sections for each category.""",
+DOCUMENT IDENTIFICATION:
+- Extract publication designation (FT 155-AR-2, ATP 3-09.50, TM 9-2350-314-10)
+- Note change numbers, dates, and superseding information
+- Identify distribution restrictions and classification markings
+
+TABULAR DATA EXTRACTION:
+- Extract ALL column headers, row labels, and data values with units
+- Preserve table structure and hierarchical organization
+- Note footnotes, conditions, and explanatory text
+- Extract cross-references to figures, procedures, or other tables
+
+MILITARY SYSTEMS DATA:
+- Weapon systems: M109A6, M777, M119, MLRS, HIMARS specifications  
+- Ammunition: M795 HE, M825 Smoke, M483 DPICM, M549 rocket-assisted
+- Charges: M3A1, M4A2, M119A1 propelling charge data
+- Ballistic parameters: ranges, elevations, deflections, time of flight
+
+OPERATIONAL CONTEXT:
+- Environmental conditions and corrections
+- Safety zones and minimum/maximum ranges
+- Special firing procedures and restrictions
+- Equipment configurations and settings
+
+Output: Structured military data with precise nomenclature and complete numerical values.""",
             
             'technical_diagram': """
-TECHNICAL DIAGRAM ANALYSIS:
-1. System Identification: Identify the main equipment, weapon, or system shown
-2. Component Analysis: List and describe all visible components, parts, and assemblies
-3. Labels & Text: Extract all part numbers, specifications, dimensions, and technical text
-4. Assembly Information: Describe how components connect or relate to each other
-5. Operational Context: Identify maintenance procedures, operation steps, or safety protocols
-6. Technical Specifications: Note any visible measurements, tolerances, or requirements
+MILITARY TECHNICAL DIAGRAM ANALYSIS:
 
-Output Format: Structured analysis with clear component hierarchy and relationships.""",
+EQUIPMENT IDENTIFICATION:
+- Full military designation (M109A6 Paladin Self-Propelled Howitzer)
+- NSN (National Stock Number) and EIC (Equipment Identification Code)
+- Model variations and configuration details
+
+COMPONENT ANALYSIS:
+- All visible components with military part numbers
+- Assembly relationships and connection points
+- Maintenance access points and service locations
+- Tool requirements and torque specifications
+
+TECHNICAL SPECIFICATIONS:
+- Dimensions, tolerances, capacities, pressures
+- Electrical specifications (voltages, currents, frequencies)
+- Fluid specifications (hydraulic, cooling, fuel systems)
+- Performance parameters and operating limits
+
+MAINTENANCE INFORMATION:
+- PMCS (Preventive Maintenance Checks and Services) points
+- Service intervals and inspection requirements
+- Lubrication points and fluid types
+- Replacement criteria and wear indicators
+
+SAFETY PROTOCOLS:
+- WARNING blocks for hazardous procedures
+- CAUTION statements for equipment protection
+- Personal protective equipment requirements
+- Lockout/tagout procedures
+
+REFERENCE INTEGRATION:
+- Figure numbers and drawing references
+- Related TM sections and procedures
+- Cross-references to other equipment manuals
+
+Output: Technical manual format with component hierarchy and maintenance focus.""",
             
             'firing_table_chart': """
-FIRING TABLE ANALYSIS:
-1. Weapon System: Identify the specific weapon system and configuration
-2. Ammunition Data: Extract ammunition type, weight, and characteristics
-3. Firing Data: Extract ALL ranges, elevations, deflections, and charge information
-4. Ballistic Coefficients: Note trajectory data, time of flight, and ballistic parameters
-5. Environmental Conditions: Extract temperature, altitude, wind, and other conditions
-6. Special Instructions: Note any special firing procedures or restrictions
+FIRING TABLE DATA EXTRACTION (SPECIALIZED):
 
-Output Format: Precise tabular data extraction with complete ballistic information.""",
+FIRING TABLE IDENTIFICATION:
+- Complete FT designation (FT 155-AR-2, FT 155 ADD-AD-1, etc.)
+- Weapon system compatibility (155mm howitzer variants)
+- Projectile family and specific rounds (M795, M825, M483, M549)
+- Addendum relationships to base firing tables
+
+BALLISTIC DATA EXTRACTION:
+- Range data in meters with precision to nearest meter
+- Quadrant elevation in mils with decimal precision
+- Deflection data and azimuth corrections
+- Time of flight in seconds
+- Maximum ordinate heights
+- Drift corrections and wind effects
+
+CHARGE INFORMATION:
+- Propelling charge designations (M3A1, M4A2, M119A1)
+- Charge weights and temperature effects
+- Muzzle velocity data (m/s)
+- Charge lot variations and corrections
+
+PROJECTILE SPECIFICATIONS:
+- Projectile weight and dimensions
+- Fuze compatibility and settings
+- Payload specifications (HE weight, smoke duration)
+- Special characteristics (rocket-assisted, base-bleed)
+
+SAFETY DATA:
+- Minimum and maximum ranges for safety
+- Danger area dimensions and orientations
+- Special safety considerations
+- Firing restrictions and prohibited zones
+
+ENVIRONMENTAL CONDITIONS:
+- Standard meteorological conditions
+- Temperature corrections and effects
+- Altitude and air density corrections
+- Wind speed and direction impacts
+
+Output: Comprehensive ballistic data table with military precision and safety emphasis.""",
+            
+            'field_manual_page': """
+FIELD MANUAL DOCTRINE EXTRACTION:
+
+PUBLICATION IDENTIFICATION:
+- Complete FM designation and title
+- Publication date and change incorporation
+- Distribution restriction statement
+- Superseding information and related publications
+
+DOCTRINAL CONTENT:
+- Mission statements and organizational purposes
+- Command and control relationships
+- Tactical employment principles
+- Fire support coordination procedures
+
+OPERATIONAL PROCEDURES:
+- Step-by-step tactical procedures
+- Decision-making processes and matrices
+- Planning factors and considerations
+- Communication procedures and protocols
+
+ORGANIZATIONAL STRUCTURE:
+- Unit organization and personnel assignments
+- Equipment allocation and capabilities
+- Operational roles and responsibilities
+- Inter-unit coordination requirements
+
+TRAINING REQUIREMENTS:
+- Training objectives and standards
+- Qualification requirements
+- Evaluation criteria and methods
+- Certification procedures
+
+REFERENCE FRAMEWORK:
+- Related FM, ATP, and TC publications
+- Joint publication references
+- Standardization agreements (STANAGs)
+- Cross-service coordination procedures
+
+Output: Doctrinal framework with clear operational guidance and training integration.""",
+            
+            'technical_manual_page': """
+TECHNICAL MANUAL PROCEDURE EXTRACTION:
+
+MANUAL IDENTIFICATION:
+- Complete TM number and equipment designation
+- NSN and equipment identification codes
+- Manual type (operator, maintenance, parts)
+- Effectivity and superseding information
+
+PROCEDURAL EXTRACTION:
+- Numbered step sequences with precise instructions
+- Required tools and materials lists
+- Time estimates and personnel requirements
+- Quality control checkpoints and verification steps
+
+TECHNICAL SPECIFICATIONS:
+- Torque values and fastener specifications
+- Clearances, tolerances, and fit requirements
+- Fluid capacities and specification types
+- Electrical parameters and test procedures
+
+MAINTENANCE PROCEDURES:
+- PMCS schedules and inspection points
+- Troubleshooting flowcharts and decision trees
+- Repair procedures and replacement criteria
+- Service intervals and maintenance actions
+
+SAFETY INTEGRATION:
+- WARNING statements for personnel hazards
+- CAUTION blocks for equipment protection
+- Environmental hazards and protective measures
+- Lockout/tagout and isolation procedures
+
+PARTS AND TOOLS:
+- Part numbers and nomenclature
+- Tool requirements and special equipment
+- Consumable materials and quantities
+- Source, maintenance, and recoverability codes
+
+CROSS-REFERENCES:
+- Related TM sections and procedures
+- Drawing and schematic references
+- Support equipment manual references
+- Supply and maintenance contact information
+
+Output: Technical procedure format with maintenance emphasis and safety integration.""",
+            
+            'army_regulation_page': """
+ARMY REGULATION POLICY EXTRACTION:
+
+REGULATION IDENTIFICATION:
+- Complete AR number and title
+- Effective date and superseding information
+- Applicability and scope statements
+- Distribution and proponent information
+
+POLICY FRAMEWORK:
+- Regulatory requirements and compliance standards
+- Command responsibilities and authorities
+- Implementation guidance and procedures
+- Reporting requirements and timelines
+
+ADMINISTRATIVE PROCEDURES:
+- Personnel management policies
+- Administrative processes and workflows
+- Documentation requirements and standards
+- Review and approval procedures
+
+SAFETY AND COMPLIANCE:
+- Safety standards and requirements
+- Regulatory compliance measures
+- Inspection and evaluation criteria
+- Corrective action procedures
+
+ORGANIZATIONAL GUIDANCE:
+- Command structure and relationships
+- Delegation of authority
+- Coordination requirements
+- Inter-agency relationships
+
+Output: Policy framework with clear regulatory guidance and implementation procedures.""",
+            
+            'training_publication_page': """
+TRAINING PUBLICATION PROCEDURE EXTRACTION:
+
+PUBLICATION IDENTIFICATION:
+- Complete ATP/TC designation and title
+- Training domain and applicability
+- Distribution restrictions and proponent
+- Related training publications
+
+TRAINING PROCEDURES:
+- Detailed techniques and methods
+- Performance standards and criteria
+- Equipment operation procedures
+- Tactical employment techniques
+
+CERTIFICATION REQUIREMENTS:
+- Qualification standards and prerequisites
+- Evaluation procedures and criteria
+- Certification maintenance requirements
+- Remedial training procedures
+
+EQUIPMENT OPERATIONS:
+- System-specific operating procedures
+- Performance parameters and limitations
+- Maintenance operator requirements
+- Safety procedures and precautions
+
+MULTI-SERVICE COORDINATION:
+- Joint service procedures and standards
+- Inter-service communication protocols
+- Standardization agreements
+- Combined operations procedures
+
+Output: Training procedure format with certification emphasis and multi-service integration.""",
             
             'photograph': """
-EQUIPMENT PHOTOGRAPH ANALYSIS:
-1. Equipment Identification: Identify and describe all visible military equipment
-2. Visible Markings: Extract all visible text, labels, serial numbers, and markings
-3. Operational Context: Describe the setting, usage scenario, or operational environment
-4. Personnel & Procedures: Note any visible operational procedures or personnel actions
-5. Safety Information: Identify any visible safety equipment, warnings, or protocols
-6. Condition Assessment: Note equipment condition, wear patterns, or maintenance needs
+MILITARY EQUIPMENT PHOTOGRAPH INTELLIGENCE:
 
-Output Format: Detailed description with emphasis on operational and maintenance information."""
+EQUIPMENT IDENTIFICATION:
+- Complete military equipment designations
+- Model numbers and configuration variants
+- Unit markings and organizational identifiers
+- Serial numbers and data plate information
+
+OPERATIONAL ANALYSIS:
+- Equipment deployment configuration
+- Operational status and readiness indicators
+- Tactical positioning and employment
+- Support equipment and accessories
+
+MAINTENANCE ASSESSMENT:
+- Equipment condition and serviceability
+- Visible maintenance requirements
+- Wear patterns and usage indicators
+- Modification and upgrade evidence
+
+ENVIRONMENTAL CONTEXT:
+- Operational environment characteristics
+- Weather conditions and impacts
+- Terrain effects and considerations
+- Camouflage and concealment measures
+
+PERSONNEL ACTIVITIES:
+- Operational procedures being performed
+- Safety protocols and protective equipment
+- Training activities and proficiency indicators
+- Maintenance actions and inspections
+
+TACTICAL INTELLIGENCE:
+- Unit organization and capabilities
+- Equipment readiness and availability
+- Logistical support requirements
+- Operational tempo indicators
+
+Output: Comprehensive equipment intelligence with operational and maintenance focus."""
         }
         
         specific_prompt = type_specific_prompts.get(image_type, type_specific_prompts['technical_diagram'])
